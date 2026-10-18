@@ -1,0 +1,25 @@
+[tools]
+lua-language-server = "3.19.2"
+shellcheck = "0.11.0"
+
+[tasks.build-mpv]
+description = "Build the pinned mpv with writable playlist/N/title into .cache/mpv"
+run = "{{config_root}}/tests/build-mpv.sh"
+
+[tasks.lint]
+description = "Run the LuaLS type check and shellcheck"
+run = [
+    'lua-language-server --check="$MISE_PROJECT_ROOT" --checklevel=Warning --logpath="$MISE_PROJECT_ROOT/.cache/luals"',
+    '''
+    cd "$MISE_PROJECT_ROOT"
+    set --
+    for f in tests/*.sh tests/support/*.sh tests/support/fake-yt-dlp; do
+        [ -e "$f" ] && set -- "$@" "$f"
+    done
+    shellcheck "$@"
+    ''',
+]
+
+[tasks.test]
+description = "Run the headless mpv tests; arguments select tests by name"
+run = "{{config_root}}/tests/run.sh"

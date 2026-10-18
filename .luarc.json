@@ -1,0 +1,12 @@
+{
+    "runtime.version": "LuaJIT",
+    "runtime.path": [
+        "?.lua",
+        "?/init.lua",
+        "title-prefetch/?.lua",
+        "title-prefetch/lib/?.lua",
+        "tests/support/?.lua"
+    ],
+    "workspace.library": ["types"],
+    "workspace.ignoreDir": [".cache"]
+}

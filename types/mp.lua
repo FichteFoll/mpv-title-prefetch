@@ -1,0 +1,89 @@
+---@meta
+-- Handwritten definitions of the parts of the mpv Lua API that this project uses.
+-- Source: DOCS/man/lua.rst of mpv.
+
+---@class MpTimer
+---@field timeout number
+---@field oneshot boolean
+local MpTimer = {}
+
+---Disable the timer, remembering the elapsed time.
+function MpTimer:stop() end
+
+---Disable the timer and reset the elapsed time.
+function MpTimer:kill() end
+
+---Restart the timer.
+function MpTimer:resume() end
+
+---@return boolean
+function MpTimer:is_enabled() end
+
+---@class mp
+mp = {}
+
+---@param ... string|number|boolean
+---@return true|nil success
+---@return string? error
+function mp.commandv(...) end
+
+---@param t table
+---@param def? any
+---@return any result
+---@return string? error
+function mp.command_native(t, def) end
+
+---@param name string
+---@param def? string
+---@return string? value
+---@return string? error
+function mp.get_property(name, def) end
+
+---@param name string
+---@param def? boolean
+---@return boolean? value
+---@return string? error
+function mp.get_property_bool(name, def) end
+
+---@param name string
+---@param def? any
+---@return any value
+---@return string? error
+function mp.get_property_native(name, def) end
+
+---@param name string
+---@param value string
+---@return true|nil success
+---@return string? error
+function mp.set_property(name, value) end
+
+---@param name string
+---@param value number
+---@return true|nil success
+---@return string? error
+function mp.set_property_number(name, value) end
+
+---@param name string
+---@param value any
+---@return true|nil success
+---@return string? error
+function mp.set_property_native(name, value) end
+
+---@return number
+function mp.get_time() end
+
+---@param name string
+---@param fn fun(event: table)
+function mp.register_event(name, fn) end
+
+---@param seconds number
+---@param fn fun()
+---@param disabled? boolean
+---@return MpTimer
+function mp.add_timeout(seconds, fn, disabled) end
+
+---@param seconds number
+---@param fn fun()
+---@param disabled? boolean
+---@return MpTimer
+function mp.add_periodic_timer(seconds, fn, disabled) end
