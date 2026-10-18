@@ -101,19 +101,19 @@ local function publish_idle(idle)
     mp.set_property_native("user-data/title-prefetch/idle", idle)
 end
 
----Write `title` into every untitled playlist entry with `filename`.
+---Write each title in `by_filename` into every untitled entry of `playlist` with that filename.
 ---This is the only place that writes titles.
----@param filename string
----@param title string
-local function write_titles(filename, title)
+---@param playlist table[] as read from the `playlist` property
+---@param by_filename table<string, string>
+local function write_titles(playlist, by_filename)
     if disabled then
         return
     end
-    local playlist = mp.get_property_native("playlist", {})
     for i, entry in ipairs(playlist) do
-        if entry.filename == filename and not entry.title then
+        local title = by_filename[entry.filename]
+        if title and not entry.title then
             local ok, err = mp.set_property("playlist/" .. (i - 1) .. "/title", title)
-            -- "property not found" means the entry vanished since the read above.
+            -- "property not found" means the entry vanished since `playlist` was read.
             if not ok and err ~= "property not found" then
                 msg.error("this script requires an mpv build with writable playlist/N/title"
                     .. " (mpv PR #18599); disabling it (" .. tostring(err) .. ")")
@@ -153,10 +153,12 @@ local function run_pass()
         publish_idle(not q:busy())
         return
     end
-    ---@type Job[]
-    local jobs = {}
     ---@type table<string, true>
     local seen = {}
+    ---@type table<string, string>
+    local cached_titles = {}
+    ---@type string[]
+    local pending = {}
     for _, i in ipairs(window.indices(#playlist, pos, effective_range)) do
         local entry = playlist[i + 1]
         local filename = entry.filename
@@ -164,17 +166,25 @@ local function run_pass()
             seen[filename] = true
             local cached = titles:get(filename)
             if cached then
-                write_titles(filename, cached)
+                cached_titles[filename] = cached
             elseif not failed[filename] and not q:is_running(filename) then
-                local job = job_for(filename)
-                if job then
-                    jobs[#jobs + 1] = job
-                end
+                pending[#pending + 1] = filename
             end
         end
     end
-    if disabled then
-        jobs = {}
+    -- `write_titles` addresses entries by index into this pass's `playlist` read.
+    -- Resolver work reads properties and files, during which other clients may reorder the playlist,
+    -- so the writes come first.
+    write_titles(playlist, cached_titles)
+    ---@type Job[]
+    local jobs = {}
+    if not disabled then
+        for _, filename in ipairs(pending) do
+            local job = job_for(filename)
+            if job then
+                jobs[#jobs + 1] = job
+            end
+        end
     end
     q:set_wanted(jobs)
     publish_idle(not q:busy())
@@ -196,7 +206,7 @@ end
 local function on_done(filename, title, retry)
     if title then
         titles:put(filename, title)
-        write_titles(filename, title)
+        write_titles(mp.get_property_native("playlist", {}), {[filename] = title})
     elseif not retry then
         failed[filename] = true
     end
