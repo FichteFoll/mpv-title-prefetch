@@ -93,6 +93,10 @@ function mp.get_time() end
 ---@param fn fun(event: table)
 function mp.register_event(name, fn) end
 
+---@param name string
+---@param fn fun(...: string)
+function mp.register_script_message(name, fn) end
+
 ---@param seconds number
 ---@param fn fun()
 ---@param disabled? boolean
@@ -109,6 +113,9 @@ function mp.add_periodic_timer(seconds, fn, disabled) end
 ---@param type? "none"|"native"|"bool"|"string"|"number"
 ---@param fn fun(name: string, value: any)
 function mp.observe_property(name, type, fn) end
+
+---@param fn fun(name: string, value: any) a function passed to `mp.observe_property`
+function mp.unobserve_property(fn) end
 
 ---@return string? directory nil for a single-file script
 function mp.get_script_directory() end

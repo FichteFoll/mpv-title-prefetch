@@ -22,7 +22,10 @@ Options (script-opts/title-prefetch.conf or --script-opts=title-prefetch-<key>=<
 
 Script messages:
     script-message-to title_prefetch resolve-more [count|all]
-        resolve `count` more entries in each direction, or all of them
+        resolve `count` more entries in each direction, or all of them.
+        `count` is a positive integer and defaults to `range` (5 if `range` is not positive).
+        It also works when `range=0`.
+        The extension lasts until the `range` option changes.
 
 Copyright (c) 2026 FichteFoll <fichtefoll2@googlemail.com>
 SPDX-License-Identifier: MIT
@@ -83,6 +86,8 @@ local titles
 -- Filenames whose resolution failed or found no title; only playing the entry clears them.
 ---@type table<string, true>
 local failed = {}
+-- The `range` option, as extended by `resolve-more`; negative means all.
+local effective_range = opts.range
 -- Set when this mpv rejects writes to `playlist/N/title`.
 local disabled = false
 local pass_armed = false
@@ -152,7 +157,7 @@ local function run_pass()
     local jobs = {}
     ---@type table<string, true>
     local seen = {}
-    for _, i in ipairs(window.indices(#playlist, pos, opts.range)) do
+    for _, i in ipairs(window.indices(#playlist, pos, effective_range)) do
         local entry = playlist[i + 1]
         local filename = entry.filename
         if not entry.title and not seen[filename] then
@@ -207,6 +212,9 @@ local function on_update(changed)
     end
     table.sort(keys)
     msg.debug("options updated: " .. table.concat(keys, ", "))
+    if changed.range then
+        effective_range = opts.range
+    end
     q:set_limits(opts.concurrency, opts.timeout)
     titles:set_limit(opts.cache_size)
     request_pass()
@@ -232,9 +240,31 @@ local function on_file_loaded()
     request_pass()
 end
 
+---@param arg string?
+local function on_resolve_more(arg)
+    local count
+    if arg == nil or arg == "" then
+        count = opts.range > 0 and opts.range or 5
+    elseif arg == "all" then
+        count = -1
+    elseif arg:match("^%d+$") and tonumber(arg) > 0 then
+        count = tonumber(arg)
+    else
+        msg.warn("resolve-more: expected a positive integer or `all`, got: " .. arg)
+        return
+    end
+    if effective_range < 0 then
+        return
+    end
+    effective_range = count < 0 and -1 or effective_range + count
+    msg.debug("effective range: " .. effective_range)
+    request_pass()
+end
+
 options.read_options(opts, "title-prefetch", on_update)
 q = queue.new{concurrency = opts.concurrency, timeout = opts.timeout, on_done = on_done}
 titles = cache.new(opts.cache_size)
+effective_range = opts.range
 
 publish_idle(true)
 mp.observe_property("playlist", "native", request_pass)
@@ -244,3 +274,4 @@ mp.observe_property("playlist-pos", "number", request_pass)
 -- Remote entries are only resolved while `ytdl` is enabled.
 mp.observe_property("ytdl", "bool", request_pass)
 mp.register_event("file-loaded", on_file_loaded)
+mp.register_script_message("resolve-more", on_resolve_more)
