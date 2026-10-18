@@ -59,7 +59,7 @@ end
 ---@param filename string
 ---@param opts Options
 ---@return Job
-function local_files.job(filename, opts)
+local function job(filename, opts)
     return {
         key = filename,
         args = {
@@ -71,6 +71,12 @@ function local_files.job(filename, opts)
         },
         parse = parse,
     }
+end
+
+---@param opts Options
+---@return JobFactory
+function local_files.prepare(opts)
+    return function(filename) return job(filename, opts) end
 end
 
 return local_files

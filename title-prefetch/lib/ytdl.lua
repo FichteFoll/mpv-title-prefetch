@@ -113,27 +113,37 @@ function ytdl.matches(filename)
     return is_url and mp.get_property_bool("ytdl") == true
 end
 
----@param filename string
----@return Job?
-function ytdl.job(filename)
+---Look up the executable and build the URL-independent arguments once, for one scheduling pass.
+---@return JobFactory
+function ytdl.prepare()
     local exe = executable()
+    msg.debug("yt-dlp executable: " .. (exe or "none left to try"))
     if not exe then
-        return nil
+        return function() return nil end
     end
-    local url = filename:gsub("^ytdl://", "")
     -- Format and subtitle arguments are omitted, because only the title is needed.
-    local args = {exe, "--no-warnings", "--flat-playlist", "--no-playlist", "-J"}
+    local base_args = {exe, "--no-warnings", "--flat-playlist", "--no-playlist", "-J"}
     local raw_options = mp.get_property_native("options/ytdl-raw-options", {})
     for key, value in pairs(raw_options) do
-        args[#args + 1] = "--" .. key
+        base_args[#base_args + 1] = "--" .. key
         -- ytdl_hook passes an empty value only for `proxy`.
         if value ~= "" or key == "proxy" then
-            args[#args + 1] = value
+            base_args[#base_args + 1] = value
         end
     end
-    args[#args + 1] = "--"
-    args[#args + 1] = url
-    return {key = filename, args = args, parse = parser(exe)}
+    local parse = parser(exe)
+
+    return function(filename)
+        -- Copied, because the queue keeps each job's `args`.
+        -- Not via `table.unpack`, which LuaJIT lacks.
+        local args = {}
+        for i, arg in ipairs(base_args) do
+            args[i] = arg
+        end
+        args[#args + 1] = "--"
+        args[#args + 1] = (filename:gsub("^ytdl://", ""))
+        return {key = filename, args = args, parse = parse}
+    end
 end
 
 return ytdl

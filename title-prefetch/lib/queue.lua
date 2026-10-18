@@ -18,6 +18,9 @@
 ---Returns `nil, true` when the job should be retried instead of counting as failed.
 ---@alias JobParse fun(stdout: string, result: SubprocessResult): title: string?, retry: boolean?
 
+---Builds the jobs of one resolver for one scheduling pass.
+---@alias JobFactory fun(filename: string): Job? nil when the resolver cannot run now
+
 ---`title` is nil when the job failed, and `retry` is true when it should be retried.
 ---@alias OnDone fun(key: string, title: string?, retry: boolean?)
 

@@ -64,19 +64,19 @@ local opts = {
 ---@class Resolver
 ---@field enabled fun(): boolean
 ---@field matches fun(filename: string): boolean
----@field job fun(filename: string, opts: Options): Job? nil when the resolver cannot run now
+---@field prepare fun(opts: Options): JobFactory called at most once per pass, on the first entry that needs it
 
 ---@type Resolver[]
 local resolvers = {
     {
         enabled = function() return opts.resolve_local end,
         matches = local_files.matches,
-        job = local_files.job,
+        prepare = local_files.prepare,
     },
     {
         enabled = function() return opts.resolve_remote end,
         matches = ytdl.matches,
-        job = ytdl.job,
+        prepare = ytdl.prepare,
     },
 }
 
@@ -125,11 +125,17 @@ local function write_titles(playlist, by_filename)
 end
 
 ---@param filename string
+---@param factories table<Resolver, JobFactory> the factories of the current pass, extended as needed
 ---@return Job?
-local function job_for(filename)
+local function job_for(filename, factories)
     for _, resolver in ipairs(resolvers) do
         if resolver.enabled() and resolver.matches(filename) then
-            return resolver.job(filename, opts)
+            local factory = factories[resolver]
+            if not factory then
+                factory = resolver.prepare(opts)
+                factories[resolver] = factory
+            end
+            return factory(filename)
         end
     end
     return nil
@@ -179,8 +185,10 @@ local function run_pass()
     ---@type Job[]
     local jobs = {}
     if not disabled then
+        ---@type table<Resolver, JobFactory>
+        local factories = {}
         for _, filename in ipairs(pending) do
-            local job = job_for(filename)
+            local job = job_for(filename, factories)
             if job then
                 jobs[#jobs + 1] = job
             end

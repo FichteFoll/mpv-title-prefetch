@@ -89,6 +89,9 @@ function mp.set_property_native(name, value) end
 ---@return number
 function mp.get_time() end
 
+---@param level string
+function mp.enable_messages(level) end
+
 ---@param name string
 ---@param fn fun(event: table)
 function mp.register_event(name, fn) end
