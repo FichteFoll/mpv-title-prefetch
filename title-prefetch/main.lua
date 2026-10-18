@@ -31,6 +31,10 @@ SPDX-License-Identifier: MIT
 local msg = require("mp.msg")
 local options = require("mp.options")
 
+local local_files = require("lib.local")
+local queue = require("lib.queue")
+local window = require("lib.window")
+
 ---@class Options
 ---@field range integer
 ---@field resolve_remote boolean
@@ -49,6 +53,139 @@ local opts = {
     mpv_path = "mpv",
 }
 
+---@class Resolver
+---@field enabled fun(): boolean
+---@field matches fun(filename: string): boolean
+---@field job fun(filename: string, opts: Options): Job
+
+---@type Resolver[]
+local resolvers = {
+    {
+        enabled = function() return opts.resolve_local end,
+        matches = local_files.matches,
+        job = local_files.job,
+    },
+}
+
+-- State is keyed by playlist entry filename.
+---@type table<string, string>
+local titles = {}
+-- Filenames whose resolution failed or found no title; never retried during the session.
+---@type table<string, true>
+local failed = {}
+-- Set when this mpv rejects writes to `playlist/N/title`.
+local disabled = false
+local pass_armed = false
+
+---@type Queue
+local q
+
+-- Unstable; for tests and debugging only.
+---@param idle boolean
+local function publish_idle(idle)
+    mp.set_property_native("user-data/title-prefetch/idle", idle)
+end
+
+---Write `title` into every untitled playlist entry with `filename`.
+---This is the only place that writes titles.
+---@param filename string
+---@param title string
+local function write_titles(filename, title)
+    if disabled then
+        return
+    end
+    local playlist = mp.get_property_native("playlist", {})
+    for i, entry in ipairs(playlist) do
+        if entry.filename == filename and not entry.title then
+            local ok, err = mp.set_property("playlist/" .. (i - 1) .. "/title", title)
+            -- "property not found" means the entry vanished since the read above.
+            if not ok and err ~= "property not found" then
+                msg.error("this script requires an mpv build with writable playlist/N/title"
+                    .. " (mpv PR #18599); disabling it (" .. tostring(err) .. ")")
+                disabled = true
+                return
+            end
+        end
+    end
+end
+
+---@param filename string
+---@return Job?
+local function job_for(filename)
+    for _, resolver in ipairs(resolvers) do
+        if resolver.enabled() and resolver.matches(filename) then
+            return resolver.job(filename, opts)
+        end
+    end
+    return nil
+end
+
+local function run_pass()
+    pass_armed = false
+    if disabled then
+        q:set_wanted({})
+        publish_idle(not q:busy())
+        return
+    end
+
+    local playlist = mp.get_property_native("playlist", {})
+    local pos = mp.get_property_number("playlist-pos", -1) --[[@as integer]]
+    -- Outside of idle mode, no position means that mpv has yet to pick the entry it plays,
+    -- for example from `--playlist-start`, `--shuffle` or a watch-later resume.
+    -- Resolving now could probe exactly that entry, so wait until the position is set.
+    if pos < 0 and not mp.get_property_bool("idle-active", false) then
+        q:set_wanted({})
+        publish_idle(not q:busy())
+        return
+    end
+    ---@type Job[]
+    local jobs = {}
+    ---@type table<string, true>
+    local seen = {}
+    for _, i in ipairs(window.indices(#playlist, pos, opts.range)) do
+        local entry = playlist[i + 1]
+        local filename = entry.filename
+        if not entry.title and not seen[filename] then
+            seen[filename] = true
+            if titles[filename] then
+                write_titles(filename, titles[filename])
+            elseif not failed[filename] and not q:is_running(filename) then
+                local job = job_for(filename)
+                if job then
+                    jobs[#jobs + 1] = job
+                end
+            end
+        end
+    end
+    if disabled then
+        jobs = {}
+    end
+    q:set_wanted(jobs)
+    publish_idle(not q:busy())
+end
+
+---Run a scheduling pass in the next event-loop turn, at most once per turn.
+local function request_pass()
+    if pass_armed then
+        return
+    end
+    pass_armed = true
+    publish_idle(false)
+    mp.add_timeout(0, run_pass)
+end
+
+---@param filename string
+---@param title string?
+local function on_done(filename, title)
+    if title then
+        titles[filename] = title
+        write_titles(filename, title)
+    else
+        failed[filename] = true
+    end
+    request_pass()
+end
+
 ---@param changed table<string, true>
 local function on_update(changed)
     local keys = {}
@@ -57,9 +194,15 @@ local function on_update(changed)
     end
     table.sort(keys)
     msg.debug("options updated: " .. table.concat(keys, ", "))
+    q:set_limits(opts.concurrency, opts.timeout)
+    request_pass()
 end
 
 options.read_options(opts, "title-prefetch", on_update)
+q = queue.new{concurrency = opts.concurrency, timeout = opts.timeout, on_done = on_done}
 
--- Unstable; for tests and debugging only.
-mp.set_property_native("user-data/title-prefetch/idle", true)
+publish_idle(true)
+mp.observe_property("playlist", "native", request_pass)
+-- Leaving or entering idle mode decides whether a pass at `playlist-pos == -1` is deferred.
+mp.observe_property("idle-active", "bool", request_pass)
+mp.observe_property("playlist-pos", "number", request_pass)

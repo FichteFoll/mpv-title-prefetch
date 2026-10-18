@@ -33,6 +33,17 @@ function mp.commandv(...) end
 ---@return string? error
 function mp.command_native(t, def) end
 
+---@class MpAsyncCommand
+
+---@param t table
+---@param fn? fun(success: boolean, result: any, error: string?)
+---@return MpAsyncCommand? request nil if starting the command failed
+---@return string? error
+function mp.command_native_async(t, fn) end
+
+---@param t MpAsyncCommand
+function mp.abort_async_command(t) end
+
 ---@param name string
 ---@param def? string
 ---@return string? value
@@ -50,6 +61,12 @@ function mp.get_property_bool(name, def) end
 ---@return any value
 ---@return string? error
 function mp.get_property_native(name, def) end
+
+---@param name string
+---@param def? number
+---@return number? value
+---@return string? error
+function mp.get_property_number(name, def) end
 
 ---@param name string
 ---@param value string
@@ -87,3 +104,11 @@ function mp.add_timeout(seconds, fn, disabled) end
 ---@param disabled? boolean
 ---@return MpTimer
 function mp.add_periodic_timer(seconds, fn, disabled) end
+
+---@param name string
+---@param type? "none"|"native"|"bool"|"string"|"number"
+---@param fn fun(name: string, value: any)
+function mp.observe_property(name, type, fn) end
+
+---@return string? directory nil for a single-file script
+function mp.get_script_directory() end

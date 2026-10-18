@@ -38,19 +38,24 @@ local function format_opt(value)
     return tostring(value)
 end
 
----Replace the whole `script-opts` property.
----Omitted arguments keep their remembered values; `opts` is merged into them.
----@param opts? table<string, OptValue> `title-prefetch` options
----@param script_opts? string[] extra raw `key=value` entries
-function h.set_opts(opts, script_opts)
+---@param opts? table<string, OptValue>
+---@param script_opts? string[]
+local function remember_opts(opts, script_opts)
     for key, value in pairs(opts or {}) do
         remembered_opts[key] = value
     end
     remembered_script_opts = script_opts or remembered_script_opts
+end
 
+---Write the remembered options to `script-opts`, with `overrides` applied on top.
+---@param overrides? table<string, OptValue> written, but not remembered
+local function write_opts(overrides)
     ---@type table<string, string>
     local all = {}
     for key, value in pairs(remembered_opts) do
+        all["title-prefetch-" .. key] = format_opt(value)
+    end
+    for key, value in pairs(overrides or {}) do
         all["title-prefetch-" .. key] = format_opt(value)
     end
     for _, entry in ipairs(remembered_script_opts) do
@@ -65,6 +70,15 @@ function h.set_opts(opts, script_opts)
     mp.set_property_native("script-opts", all)
 end
 
+---Replace the whole `script-opts` property.
+---Omitted arguments keep their remembered values; `opts` is merged into them.
+---@param opts? table<string, OptValue> `title-prefetch` options
+---@param script_opts? string[] extra raw `key=value` entries
+function h.set_opts(opts, script_opts)
+    remember_opts(opts, script_opts)
+    write_opts()
+end
+
 ---@class SetupArgs
 ---@field opts? table<string, OptValue>
 ---@field script_opts? string[]
@@ -75,7 +89,12 @@ end
 ---Configure options, fill the playlist and start playback, synchronously.
 ---@param args SetupArgs
 function h.setup(args)
-    h.set_opts(args.opts, args.script_opts)
+    -- The plugin runs concurrently and reads `playlist-pos` live in its passes,
+    -- so it must not resolve anything before the position below is final.
+    -- `run.sh` starts it with `range=0`, this write keeps that,
+    -- and only the write at the end applies the requested range.
+    remember_opts(args.opts, args.script_opts)
+    write_opts({range = 0})
     if args.list then
         mp.commandv("loadlist", args.list, "append")
     else
@@ -88,6 +107,7 @@ function h.setup(args)
     if mp.get_property_bool("idle-active") then
         mp.commandv("playlist-play-index", pos)
     end
+    h.set_opts()
 end
 
 ---@param i integer
@@ -114,6 +134,17 @@ function h.wait_until(desc, pred, timeout_s, fn)
             timer:kill()
             h.fail("timeout: " .. desc)
         end
+    end)
+end
+
+---Wait at least 0.3 s, so that the plugin can react to preceding changes,
+---and then until `user-data/title-prefetch/idle` is true.
+---@param fn fun()
+function h.wait_idle(fn)
+    mp.add_timeout(0.3, function()
+        h.wait_until("title-prefetch is idle", function()
+            return mp.get_property_native("user-data/title-prefetch/idle") == true
+        end, 20, fn)
     end)
 end
 
