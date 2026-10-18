@@ -31,7 +31,11 @@ SPDX-License-Identifier: MIT
 local msg = require("mp.msg")
 local options = require("mp.options")
 
+local cache = require("lib.cache")
 local local_files = require("lib.local")
+-- `lib/probe.lua` runs as a single-file script and requires this module as `media_title`.
+---@diagnostic disable-next-line: different-requires
+local media_title = require("lib.media_title")
 local queue = require("lib.queue")
 local window = require("lib.window")
 local ytdl = require("lib.ytdl")
@@ -74,9 +78,9 @@ local resolvers = {
 }
 
 -- State is keyed by playlist entry filename.
----@type table<string, string>
-local titles = {}
--- Filenames whose resolution failed or found no title; never retried during the session.
+---@type Cache
+local titles
+-- Filenames whose resolution failed or found no title; only playing the entry clears them.
 ---@type table<string, true>
 local failed = {}
 -- Set when this mpv rejects writes to `playlist/N/title`.
@@ -153,8 +157,9 @@ local function run_pass()
         local filename = entry.filename
         if not entry.title and not seen[filename] then
             seen[filename] = true
-            if titles[filename] then
-                write_titles(filename, titles[filename])
+            local cached = titles:get(filename)
+            if cached then
+                write_titles(filename, cached)
             elseif not failed[filename] and not q:is_running(filename) then
                 local job = job_for(filename)
                 if job then
@@ -185,7 +190,7 @@ end
 ---@param retry boolean?
 local function on_done(filename, title, retry)
     if title then
-        titles[filename] = title
+        titles:put(filename, title)
         write_titles(filename, title)
     elseif not retry then
         failed[filename] = true
@@ -203,11 +208,33 @@ local function on_update(changed)
     table.sort(keys)
     msg.debug("options updated: " .. table.concat(keys, ", "))
     q:set_limits(opts.concurrency, opts.timeout)
+    titles:set_limit(opts.cache_size)
+    request_pass()
+end
+
+---Refresh the cache with the title mpv determined for the file that is now playing.
+local function on_file_loaded()
+    local pos = mp.get_property_number("playlist-playing-pos", -1)
+    local filename = mp.get_property("playlist/" .. pos .. "/filename")
+    if not filename then
+        return
+    end
+    local title = media_title.current()
+    msg.debug("refreshing cache for " .. filename .. ": " .. tostring(title))
+    if title then
+        titles:put(filename, title)
+        failed[filename] = nil
+    else
+        titles:remove(filename)
+        failed[filename] = true
+    end
+    -- Untitled duplicates of the entry may now be written from the cache.
     request_pass()
 end
 
 options.read_options(opts, "title-prefetch", on_update)
 q = queue.new{concurrency = opts.concurrency, timeout = opts.timeout, on_done = on_done}
+titles = cache.new(opts.cache_size)
 
 publish_idle(true)
 mp.observe_property("playlist", "native", request_pass)
@@ -216,3 +243,4 @@ mp.observe_property("idle-active", "bool", request_pass)
 mp.observe_property("playlist-pos", "number", request_pass)
 -- Remote entries are only resolved while `ytdl` is enabled.
 mp.observe_property("ytdl", "bool", request_pass)
+mp.register_event("file-loaded", on_file_loaded)
