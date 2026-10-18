@@ -123,6 +123,9 @@ unlike the option prefix `title-prefetch`.
 - Local titles come from a headless `mpv` probe,
   so `mpv_path` must point to mpv.
   This reuses mpv's own demuxers and metadata rules.
+- A local playlist file or archive gets no title and counts as failed,
+  because mpv replaces it by its items when it is played,
+  and the title of its first item is not its own.
 
 ## Development
 
