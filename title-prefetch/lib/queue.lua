@@ -6,9 +6,20 @@
 ---@class Job
 ---@field key string playlist entry filename; at most one job per key runs at a time
 ---@field args string[] subprocess command line
----@field parse fun(stdout: string): string? extracts the title from the output
+---@field parse JobParse
 
----@alias OnDone fun(key: string, title: string?)
+---@class SubprocessResult
+---@field status integer exit code, or a negative value if the process did not exit normally
+---@field stdout string?
+---@field error_string string "init" if the executable could not be started
+---@field killed_by_us boolean
+
+---Extracts the title from the output.
+---Returns `nil, true` when the job should be retried instead of counting as failed.
+---@alias JobParse fun(stdout: string, result: SubprocessResult): title: string?, retry: boolean?
+
+---`title` is nil when the job failed, and `retry` is true when it should be retried.
+---@alias OnDone fun(key: string, title: string?, retry: boolean?)
 
 ---@class QueueArgs
 ---@field concurrency integer
@@ -40,15 +51,25 @@ function queue.new(args)
     }, Queue)
 end
 
+---`parse` sees every completed result, so that it can request a retry,
+---but its title is only used when the subprocess succeeded.
 ---@param job Job
 ---@param success boolean
----@param result? table subprocess result
+---@param result? SubprocessResult
 ---@return string? title
+---@return boolean? retry
 local function parse_result(job, success, result)
-    if not success or not result or result.status ~= 0 or result.killed_by_us then
+    if not success or not result then
         return nil
     end
-    return job.parse(result.stdout or "")
+    local title, retry = job.parse(result.stdout or "", result)
+    if retry then
+        return nil, true
+    end
+    if result.status ~= 0 or result.killed_by_us then
+        return nil
+    end
+    return title
 end
 
 ---@private
@@ -71,9 +92,9 @@ function Queue:start(job)
         end
         self.running[job.key] = nil
         self.running_count = self.running_count - 1
-        local title = parse_result(job, success, result)
+        local title, retry = parse_result(job, success, result)
         self:start_pending()
-        self.on_done(job.key, title)
+        self.on_done(job.key, title, retry)
     end)
     if request then
         timer = mp.add_timeout(self.timeout, function()

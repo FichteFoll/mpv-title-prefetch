@@ -52,6 +52,9 @@ end
 local function write_opts(overrides)
     ---@type table<string, string>
     local all = {}
+    -- Applies to the plugin and to mpv's own ytdl_hook, so that no test reaches the real yt-dlp.
+    -- An explicit entry in `script_opts` overrides it.
+    all["ytdl_hook-ytdl_path"] = utils.join_path(env("TP_TESTS"), "support/fake-yt-dlp")
     for key, value in pairs(remembered_opts) do
         all["title-prefetch-" .. key] = format_opt(value)
     end
@@ -114,6 +117,33 @@ end
 ---@return string? title nil when unset
 function h.title(i)
     return (mp.get_property("playlist/" .. i .. "/title"))
+end
+
+---@return string[] lines of `$TP_TMP/ytdl.log`, one per invocation of the fake yt-dlp
+function h.ytdl_calls()
+    local f = io.open(utils.join_path(env("TP_TMP"), "ytdl.log"), "r")
+    if not f then
+        return {}
+    end
+    ---@type string[]
+    local lines = {}
+    for line in f:lines() do
+        lines[#lines + 1] = line
+    end
+    f:close()
+    return lines
+end
+
+---@param pattern string plain substring
+---@return integer count number of fake yt-dlp invocations whose arguments contain `pattern`
+function h.count_calls(pattern)
+    local count = 0
+    for _, line in ipairs(h.ytdl_calls()) do
+        if line:find(pattern, 1, true) then
+            count = count + 1
+        end
+    end
+    return count
 end
 
 ---Poll `pred` every 0.05 s and call `fn` once it returns true.

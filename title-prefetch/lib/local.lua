@@ -46,8 +46,9 @@ function local_files.matches(filename)
 end
 
 ---@param stdout string
+---@param _ SubprocessResult
 ---@return string?
-local function parse(stdout)
+local function parse(stdout, _)
     local data = utils.parse_json(stdout)
     if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
         return nil

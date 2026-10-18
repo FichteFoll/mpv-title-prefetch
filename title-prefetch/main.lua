@@ -34,6 +34,7 @@ local options = require("mp.options")
 local local_files = require("lib.local")
 local queue = require("lib.queue")
 local window = require("lib.window")
+local ytdl = require("lib.ytdl")
 
 ---@class Options
 ---@field range integer
@@ -56,7 +57,7 @@ local opts = {
 ---@class Resolver
 ---@field enabled fun(): boolean
 ---@field matches fun(filename: string): boolean
----@field job fun(filename: string, opts: Options): Job
+---@field job fun(filename: string, opts: Options): Job? nil when the resolver cannot run now
 
 ---@type Resolver[]
 local resolvers = {
@@ -64,6 +65,11 @@ local resolvers = {
         enabled = function() return opts.resolve_local end,
         matches = local_files.matches,
         job = local_files.job,
+    },
+    {
+        enabled = function() return opts.resolve_remote end,
+        matches = ytdl.matches,
+        job = ytdl.job,
     },
 }
 
@@ -176,13 +182,15 @@ end
 
 ---@param filename string
 ---@param title string?
-local function on_done(filename, title)
+---@param retry boolean?
+local function on_done(filename, title, retry)
     if title then
         titles[filename] = title
         write_titles(filename, title)
-    else
+    elseif not retry then
         failed[filename] = true
     end
+    -- Also re-queues a retried entry, if it is still in the window.
     request_pass()
 end
 
@@ -206,3 +214,5 @@ mp.observe_property("playlist", "native", request_pass)
 -- Leaving or entering idle mode decides whether a pass at `playlist-pos == -1` is deferred.
 mp.observe_property("idle-active", "bool", request_pass)
 mp.observe_property("playlist-pos", "number", request_pass)
+-- Remote entries are only resolved while `ytdl` is enabled.
+mp.observe_property("ytdl", "bool", request_pass)

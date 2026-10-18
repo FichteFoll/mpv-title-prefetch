@@ -112,3 +112,7 @@ function mp.observe_property(name, type, fn) end
 
 ---@return string? directory nil for a single-file script
 function mp.get_script_directory() end
+
+---@param filename string
+---@return string? path nil if the file is not found in any config directory
+function mp.find_config_file(filename) end

@@ -1,0 +1,26 @@
+#!/bin/sh
+# Stand-in for yt-dlp in tests.
+# Logs its arguments as one line to $TP_TMP/ytdl.log and answers by the URL,
+# which is its last argument.
+
+printf '%s\n' "$*" >> "${TP_TMP:?}/ytdl.log"
+
+for url; do :; done
+id=${url##*/}
+case $url in
+    https://example.invalid/video/*)
+        printf '{"title":"Remote %s","_type":"video"}\n' "$id"
+        ;;
+    https://example.invalid/slow/*)
+        sleep 0.5
+        printf '{"title":"Slow %s"}\n' "$id"
+        ;;
+    https://example.invalid/fail/*)
+        echo "ERROR: [generic] $id: Unable to download webpage" >&2
+        exit 1
+        ;;
+    *)
+        echo "ERROR: Unsupported URL: $url" >&2
+        exit 1
+        ;;
+esac
