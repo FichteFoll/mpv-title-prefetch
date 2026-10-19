@@ -28,3 +28,11 @@ run = [
 [tasks.test]
 description = "Run the headless mpv tests; arguments select tests by name"
 run = "{{config_root}}/tests/run.sh"
+
+[tasks.package]
+description = "Build the release zip into .cache/dist"
+run = "{{config_root}}/tools/package.sh"
+
+[tasks.test-package]
+description = "Check the layout of the release zip"
+run = "{{config_root}}/tests/test-package.sh"
