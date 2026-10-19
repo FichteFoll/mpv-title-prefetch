@@ -55,6 +55,8 @@ local function write_opts(overrides)
     -- Applies to the plugin and to mpv's own ytdl_hook, so that no test reaches the real yt-dlp.
     -- An explicit entry in `script_opts` overrides it.
     all["ytdl_hook-ytdl_path"] = utils.join_path(env("TP_TESTS"), "support/fake-yt-dlp")
+    -- The probe runs the mpv under test; a test's own `mpv_path` overrides it.
+    all["title-prefetch-mpv_path"] = env("TP_MPV")
     -- Keeps the suite out of the user's title cache; a test's own `cache_dir` overrides it.
     all["title-prefetch-cache_dir"] = utils.join_path(env("TP_TMP"), "cache")
     for key, value in pairs(remembered_opts) do
@@ -71,7 +73,6 @@ local function write_opts(overrides)
         end
         all[key] = value
     end
-    all["title-prefetch-mpv_path"] = env("TP_MPV")
     mp.set_property_native("script-opts", all)
 end
 
@@ -142,6 +143,40 @@ function h.count_calls(pattern)
     local count = 0
     for _, line in ipairs(h.ytdl_calls()) do
         if line:find(pattern, 1, true) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+---@class LogLine
+---@field level string mpv message level, e.g. "warn", "v", "debug"
+---@field text string without the trailing newline
+
+---Record the plugin's log messages at `level` and above from now on.
+---Call it at most once per test script, since it sets the script's message level.
+---@param level MsgLevel
+---@return LogLine[] log appended to as messages arrive
+function h.capture_log(level)
+    ---@type LogLine[]
+    local log = {}
+    mp.enable_messages(level)
+    mp.register_event("log-message", function(event)
+        if event.prefix == "title_prefetch" then
+            log[#log + 1] = {level = event.level, text = (event.text:gsub("\n$", ""))}
+        end
+    end)
+    return log
+end
+
+---@param log LogLine[]
+---@param level string? nil matches every level
+---@param text string plain substring
+---@return integer count
+function h.count_log(log, level, text)
+    local count = 0
+    for _, line in ipairs(log) do
+        if (level == nil or line.level == level) and line.text:find(text, 1, true) then
             count = count + 1
         end
     end

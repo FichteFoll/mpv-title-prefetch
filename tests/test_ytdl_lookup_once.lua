@@ -1,13 +1,7 @@
 package.path = os.getenv("TP_TESTS") .. "/support/?.lua;" .. package.path
 local h = require("harness")
 
-local lookups = 0
-mp.enable_messages("debug")
-mp.register_event("log-message", function(event)
-    if event.prefix == "title_prefetch" and event.text:find("yt-dlp executable:", 1, true) then
-        lookups = lookups + 1
-    end
-end)
+local log = h.capture_log("debug")
 
 local entries = {h.fixture("titled-1.mkv")}
 for id = 1, 8 do
@@ -27,7 +21,7 @@ h.wait_until("indices 1-8 are titled", function()
     return true
 end, 20, function()
     h.wait_idle(function()
-        h.expect_eq(lookups, 1, "yt-dlp executable lookups")
+        h.expect_eq(h.count_log(log, "debug", "yt-dlp executable:"), 1, "yt-dlp executable lookups")
         h.pass()
     end)
 end)
