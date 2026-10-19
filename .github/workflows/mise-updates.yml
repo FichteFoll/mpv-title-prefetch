@@ -1,0 +1,71 @@
+name: mise updates
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # Default credentials are kept, because this job pushes a branch with git.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Installing the current tools gives `mise outdated` a "current" column
+      # instead of `[MISSING]`.
+      - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+
+      - id: bump
+        run: |
+          mise outdated --bump > "$RUNNER_TEMP/outdated.txt"
+          mise upgrade --bump
+          if git diff --quiet -- mise.toml mise.lock; then
+            echo "mise tools are up to date"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.bump.outputs.changed == 'true'
+        run: |
+          {
+            echo "Update mise tools"
+            echo
+            echo "mise outdated --bump:"
+            echo
+            cat "$RUNNER_TEMP/outdated.txt"
+          } > "$RUNNER_TEMP/message.txt"
+          {
+            echo '```'
+            cat "$RUNNER_TEMP/outdated.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -C mise-updates
+          git add mise.toml mise.lock
+          git commit -F "$RUNNER_TEMP/message.txt"
+          git push --force origin HEAD:mise-updates
+
+          # An open PR already shows the force-pushed commit.
+          if [ "$(gh pr list --head mise-updates --state open --json number --jq length)" -eq 0 ]; then
+            gh pr create --head mise-updates --base main \
+              --title 'Update mise tools' --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+      # A PR opened with GITHUB_TOKEN does not trigger `pull_request` workflows,
+      # while `workflow_dispatch` is exempt from that rule.
+      - if: steps.bump.outputs.changed == 'true'
+        run: gh workflow run ci.yml --ref mise-updates
