@@ -69,32 +69,17 @@ Changes at runtime take effect immediately.
 
 ## Commands
 
-The script offers a single script message:
+The script registers no key bindings and no script messages.
 
-| message | arguments | effect |
-|---|---|---|
-| `resolve-more` | optional `count` (positive integer) or `all` | extends the effective range |
-
-`count` is added to the effective range.
-Without an argument, it defaults to the `range` option when that is positive,
-and to 5 otherwise.
-`all` resolves every entry.
-The extension lasts until the `range` option changes.
-It also works with `range=0`,
-which enables resolution explicitly.
-
-No key binding is registered by default.
-Bind it in `input.conf`,
+The `range` option can be changed at runtime,
+which takes effect immediately.
+So bindings in `input.conf` can widen the window,
 for example:
 
 ```
-Ctrl+t script-message-to title_prefetch resolve-more
-Ctrl+T script-message-to title_prefetch resolve-more all
+Ctrl+t change-list script-opts append title-prefetch-range=20
+Ctrl+T change-list script-opts append title-prefetch-range=-1
 ```
-
-Note that the script name in `script-message-to` has an underscore,
-`title_prefetch`,
-unlike the option prefix `title-prefetch`.
 
 ## Behavior
 
@@ -154,8 +139,7 @@ By default, the script only prints warnings and errors:
 - a failed cache write,
 - a probe or yt-dlp executable that cannot be started
   (mpv itself also prints `Subprocess failed: init` for each attempt),
-- a subprocess that hits the `timeout`,
-- an invalid `resolve-more` argument.
+- a subprocess that hits the `timeout`.
 
 Individual resolution failures,
 including yt-dlp's error messages,
