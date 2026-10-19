@@ -69,7 +69,36 @@ Changes at runtime take effect immediately.
 
 ## Commands
 
-The script registers no key bindings and no script messages.
+The script registers no key bindings
+and offers a single script message:
+
+| message | arguments | effect |
+|---|---|---|
+| `resolve-range` | `first` and optional `last`, 0-based indices | resolves the entries at `first` to `last` |
+
+The indices are those of `playlist/N`, inclusive,
+and `last` is clamped to the playlist.
+A single argument requests one entry,
+so `resolve-range 3` and `resolve-range 3 3` both request index 3, the fourth entry.
+The message is intended for playlist UIs,
+which send it for the entries scrolled into view.
+It works independently of `range`, including `range=0`.
+Requested entries are resolved before the window,
+the latest request first,
+and earlier requests are kept until their entries are resolved, fail or leave the playlist.
+The indices are mapped to entries when the message arrives,
+so a request follows its entries when the playlist is reordered.
+The current entry is left to mpv,
+but its cached title is written to untitled duplicates of it.
+
+A display script sends it like this:
+
+```lua
+mp.commandv("script-message-to", "title_prefetch", "resolve-range", tostring(first), tostring(last))
+```
+
+`script-message-to` uses the script name `title_prefetch` with an underscore,
+unlike the option prefix `title-prefetch`.
 
 The `range` option can be changed at runtime,
 which takes effect immediately.
@@ -139,7 +168,8 @@ By default, the script only prints warnings and errors:
 - a failed cache write,
 - a probe or yt-dlp executable that cannot be started
   (mpv itself also prints `Subprocess failed: init` for each attempt),
-- a subprocess that hits the `timeout`.
+- a subprocess that hits the `timeout`,
+- an invalid `resolve-range` argument.
 
 Individual resolution failures,
 including yt-dlp's error messages,
@@ -153,6 +183,7 @@ under the script's prefix,
 and `Subprocess failed: killed` for one that hits the `timeout`.
 
 `--msg-level=title_prefetch=debug` adds the scheduling details:
+`resolve-range` requests,
 passes that do work,
 started and dropped jobs,
 cache evictions

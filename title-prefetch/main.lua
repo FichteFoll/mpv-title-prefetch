@@ -22,6 +22,13 @@ Options (script-opts/title-prefetch.conf or --script-opts=title-prefetch-<key>=<
     timeout=30          seconds before a subprocess is aborted
     mpv_path=mpv        executable used for the local probe
 
+Script messages (script-message-to title_prefetch <message> <args>):
+    resolve-range <first> [<last>]
+                        resolve the entries at the 0-based, inclusive indices
+                        `first` to `last` of `playlist/N`; `last` defaults to `first`;
+                        resolved before the window, the latest request first;
+                        requests stay until their entries are resolved
+
 Copyright (c) 2026 FichteFoll <fichtefoll2@googlemail.com>
 SPDX-License-Identifier: MIT
 --]]
@@ -83,6 +90,10 @@ local titles
 -- Filenames whose resolution failed or found no title; only playing the entry clears them.
 ---@type table<string, true>
 local failed = {}
+-- Filenames requested by `resolve-range`, latest request first;
+-- they stay until they are resolved or failed.
+---@type string[]
+local requested = {}
 -- Set when this mpv rejects writes to `playlist/N/title`.
 local disabled = false
 local pass_armed = false
@@ -160,27 +171,71 @@ local function run_pass()
     local cached_titles = {}
     ---@type string[]
     local pending = {}
-    local cached_count = 0
+
+    ---Collect the cached title of an untitled entry, or queue it for resolution.
+    ---@param filename string
+    local function consider(filename)
+        -- A failed entry is never cached in memory, so looking it up would only read the disk.
+        if seen[filename] or failed[filename] then
+            return
+        end
+        seen[filename] = true
+        local cached = titles:get(filename)
+        if cached then
+            cached_titles[filename] = cached
+        elseif not q:is_running(filename) then
+            pending[#pending + 1] = filename
+        end
+    end
+
+    if #requested > 0 then
+        ---@type table<string, true>
+        local untitled = {}
+        for _, entry in ipairs(playlist) do
+            if not entry.title then
+                untitled[entry.filename] = true
+            end
+        end
+        -- `playlist` and `playlist-pos` are separate reads, so the entry may be missing.
+        local current_entry = pos >= 0 and playlist[pos + 1] or nil
+        local current = current_entry and current_entry.filename
+        ---@type string[]
+        local kept = {}
+        for _, filename in ipairs(requested) do
+            if untitled[filename] and not failed[filename] then
+                kept[#kept + 1] = filename
+                if filename ~= current then
+                    consider(filename)
+                else
+                    -- The current entry is left to mpv, which titles it itself,
+                    -- but its cached title may be written to untitled duplicates.
+                    -- It is not marked as seen, so the window keeps its behavior for duplicates.
+                    local cached = titles:get(filename)
+                    if cached then
+                        cached_titles[filename] = cached
+                    end
+                end
+            end
+        end
+        requested = kept
+    end
+
     local indices = window.indices(#playlist, pos, opts.range)
     for _, i in ipairs(indices) do
         local entry = playlist[i + 1]
-        local filename = entry.filename
-        -- A failed entry is never cached in memory, so looking it up would only read the disk.
-        if not entry.title and not seen[filename] and not failed[filename] then
-            seen[filename] = true
-            local cached = titles:get(filename)
-            if cached then
-                cached_titles[filename] = cached
-                cached_count = cached_count + 1
-            elseif not q:is_running(filename) then
-                pending[#pending + 1] = filename
-            end
+        if not entry.title then
+            consider(entry.filename)
         end
     end
     -- `write_titles` addresses entries by index into this pass's `playlist` read.
     -- Resolver work reads properties and files, during which other clients may reorder the playlist,
     -- so the writes come first.
     write_titles(playlist, cached_titles)
+    -- Counted from the table, because the current entry's filename may be collected twice.
+    local cached_count = 0
+    for _ in pairs(cached_titles) do
+        cached_count = cached_count + 1
+    end
     ---@type Job[]
     local jobs = {}
     if not disabled then
@@ -195,8 +250,8 @@ local function run_pass()
     end
     if cached_count > 0 or #jobs > 0 then
         msg.debug(string.format(
-            "pass: %d in window, %d cached, %d to resolve",
-            #indices, cached_count, #jobs
+            "pass: %d in window, %d requested, %d cached, %d to resolve",
+            #indices, #requested, cached_count, #jobs
         ))
     end
     q:set_wanted(jobs)
@@ -264,6 +319,47 @@ local function on_file_loaded()
     request_pass()
 end
 
+---Move the filenames of the entries at the indices `first` to `last` to the front of `requested`.
+---@param ... string
+local function on_resolve_range(...)
+    local first, last = ...
+    last = last or first
+    if not (first and last and first:match("^%d+$") and last:match("^%d+$")
+            and tonumber(first) <= tonumber(last)) then
+        msg.warn("resolve-range: expected non-negative integers <first> [<last>] with first <= last, got: "
+            .. table.concat({...}, " "))
+        return
+    end
+    local first_index = tonumber(first) --[[@as integer]]
+    local last_index = tonumber(last) --[[@as integer]]
+
+    local playlist = mp.get_property_native("playlist", {})
+    ---@type table<string, true>
+    local collected = {}
+    ---@type string[]
+    local filenames = {}
+    for i = first_index, math.min(last_index, #playlist - 1) do
+        local filename = playlist[i + 1].filename
+        if not collected[filename] then
+            collected[filename] = true
+            filenames[#filenames + 1] = filename
+        end
+    end
+    local count = #filenames
+    for _, filename in ipairs(requested) do
+        if not collected[filename] then
+            filenames[#filenames + 1] = filename
+        end
+    end
+    requested = filenames
+    -- The arguments are logged as received,
+    -- because `%d` prints an oversized index as a negative number under LuaJIT.
+    msg.debug(string.format("resolve-range %s-%s: %d entries, %d requested", first, last, count, #requested))
+    if count > 0 then
+        request_pass()
+    end
+end
+
 options.read_options(opts, "title-prefetch", on_update)
 q = queue.new{concurrency = opts.concurrency, timeout = opts.timeout, on_done = on_done}
 titles = cache.open(opts.cache_dir, opts.cache_size)
@@ -276,3 +372,4 @@ mp.observe_property("playlist-pos", "number", request_pass)
 -- Remote entries are only resolved while `ytdl` is enabled.
 mp.observe_property("ytdl", "bool", request_pass)
 mp.register_event("file-loaded", on_file_loaded)
+mp.register_script_message("resolve-range", on_resolve_range)
