@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      MISE_LOCKED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+      - run: mise run lint
+
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      # git and zstd must be present before checkout and cache, respectively.
+      - name: Install build and test dependencies
+        run: >-
+          pacman -Syu --noconfirm --needed
+          git zstd base-devel meson ninja pkgconf
+          ffmpeg libplacebo libass luajit zip unzip
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Hash the versions of the main mpv libraries
+        id: deps
+        run: |
+          hash=$(pacman -Q ffmpeg libplacebo libass luajit | sha256sum | cut -d' ' -f1)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/mpv
+          key: mpv-${{ hashFiles('tests/build-mpv.sh') }}-${{ steps.deps.outputs.hash }}
+      # A library soname bump on rolling Arch leaves a restored binary
+      # that cannot start, and tests/build-mpv.sh would not reconfigure
+      # an existing build/ directory, so discard it.
+      - name: Discard a cached mpv build that cannot start
+        run: |
+          if [ -e .cache/mpv/build ] && ! .cache/mpv/build/mpv --version >/dev/null 2>&1; then
+            rm -rf .cache/mpv/build
+          fi
+      - run: tests/build-mpv.sh
+      - run: tests/run.sh
