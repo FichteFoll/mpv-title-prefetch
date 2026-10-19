@@ -144,6 +144,7 @@ function cache.open(dir, limit)
     local self = new(path, limit, scan(path, limit ~= 0))
     -- Evicts down to `limit`.
     self:set_limit(limit)
+    msg.verbose("title cache " .. path .. ": " .. self:count() .. " entries, limit " .. limit)
     return self
 end
 
@@ -215,6 +216,7 @@ function Cache:get(key)
     local data = utils.parse_json(f:read("*a"))
     f:close()
     if type(data) ~= "table" or data.filename ~= key or type(data.title) ~= "string" then
+        msg.debug("ignoring cache file " .. name .. " for " .. key)
         return nil
     end
     self:load(name, key, data.title)
@@ -293,6 +295,12 @@ function Cache:remove(key)
     self:unindex(name)
 end
 
+---Return the number of indexed entries, whether loaded or not.
+---@return integer
+function Cache:count()
+    return #self.order
+end
+
 ---@param limit integer maximum number of entries; 0 = none, negative = unlimited
 function Cache:set_limit(limit)
     self.limit = limit
@@ -309,6 +317,7 @@ function Cache:evict()
     if excess <= 0 then
         return
     end
+    msg.debug("evicted " .. excess .. " cache entries")
     for i = 1, excess do
         local name = self.order[i]
         local key = self.keys[name]
