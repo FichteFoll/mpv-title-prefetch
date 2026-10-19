@@ -61,7 +61,7 @@ Changes at runtime take effect immediately.
 | `range` | `5` | entries before and after the current one; `-1` (any negative) = all, `0` = off |
 | `resolve_remote` | `yes` | resolve `http(s)://` and `ytdl://` entries via yt-dlp |
 | `resolve_local` | `yes` | resolve local files via an mpv probe |
-| `cache_size` | `100` | maximum cached titles, FIFO; `0` = no cache, negative = unlimited |
+| `cache_size` | `500` | maximum cached titles, FIFO; `0` = no cache, negative = unlimited |
 | `concurrency` | `4` | maximum simultaneous subprocesses |
 | `timeout` | `30` | seconds before a subprocess is aborted and counted as failed |
 | `mpv_path` | `mpv` | executable used for the local probe |

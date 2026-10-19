@@ -15,7 +15,7 @@ Options (script-opts/title-prefetch.conf or --script-opts=title-prefetch-<key>=<
                         negative = all, 0 = off
     resolve_remote=yes  resolve http(s):// and ytdl:// entries via yt-dlp
     resolve_local=yes   resolve local files via an mpv probe
-    cache_size=100      maximum cached titles (FIFO); 0 = no cache, negative = unlimited
+    cache_size=500      maximum cached titles (FIFO); 0 = no cache, negative = unlimited
     concurrency=4       maximum simultaneous subprocesses
     timeout=30          seconds before a subprocess is aborted
     mpv_path=mpv        executable used for the local probe
@@ -55,7 +55,7 @@ local opts = {
     range = 5,
     resolve_remote = true,
     resolve_local = true,
-    cache_size = 100,
+    cache_size = 500,
     concurrency = 4,
     timeout = 30,
     mpv_path = "mpv",
