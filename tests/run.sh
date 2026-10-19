@@ -77,7 +77,7 @@ for name in "$@"; do
     status=0
     bounded 60 "$MPV" --no-config --idle=yes --pause --vo=null --ao=null \
         --msg-level="all=warn,title_prefetch=debug,$name=info" \
-        --script-opts=title-prefetch-range=0 \
+        --script-opts="title-prefetch-range=0,title-prefetch-cache_dir=$TP_TMP/cache" \
         --script="$ROOT/title-prefetch" --script="$TESTS/$name.lua" \
         > "$log" 2>&1 || status=$?
     if [ "$status" -eq 0 ] && ! grep '^\[title_prefetch\]' "$log" | grep -qE 'Lua error|stack traceback'; then

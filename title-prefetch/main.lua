@@ -16,6 +16,8 @@ Options (script-opts/title-prefetch.conf or --script-opts=title-prefetch-<key>=<
     resolve_remote=yes  resolve http(s):// and ytdl:// entries via yt-dlp
     resolve_local=yes   resolve local files via an mpv probe
     cache_size=500      maximum cached titles (FIFO); 0 = no cache, negative = unlimited
+    cache_dir=~~cache/title-prefetch
+                        directory of the title cache; empty = no cache
     concurrency=4       maximum simultaneous subprocesses
     timeout=30          seconds before a subprocess is aborted
     mpv_path=mpv        executable used for the local probe
@@ -48,6 +50,7 @@ local ytdl = require("lib.ytdl")
 ---@field resolve_remote boolean
 ---@field resolve_local boolean
 ---@field cache_size integer
+---@field cache_dir string
 ---@field concurrency integer
 ---@field timeout number
 ---@field mpv_path string
@@ -56,6 +59,7 @@ local opts = {
     resolve_remote = true,
     resolve_local = true,
     cache_size = 500,
+    cache_dir = "~~cache/title-prefetch",
     concurrency = 4,
     timeout = 30,
     mpv_path = "mpv",
@@ -168,12 +172,13 @@ local function run_pass()
     for _, i in ipairs(window.indices(#playlist, pos, effective_range)) do
         local entry = playlist[i + 1]
         local filename = entry.filename
-        if not entry.title and not seen[filename] then
+        -- A failed entry is never cached in memory, so looking it up would only read the disk.
+        if not entry.title and not seen[filename] and not failed[filename] then
             seen[filename] = true
             local cached = titles:get(filename)
             if cached then
                 cached_titles[filename] = cached
-            elseif not failed[filename] and not q:is_running(filename) then
+            elseif not q:is_running(filename) then
                 pending[#pending + 1] = filename
             end
         end
@@ -234,7 +239,11 @@ local function on_update(changed)
         effective_range = opts.range
     end
     q:set_limits(opts.concurrency, opts.timeout)
-    titles:set_limit(opts.cache_size)
+    if changed.cache_dir then
+        titles = cache.open(opts.cache_dir, opts.cache_size)
+    else
+        titles:set_limit(opts.cache_size)
+    end
     request_pass()
 end
 
@@ -281,7 +290,7 @@ end
 
 options.read_options(opts, "title-prefetch", on_update)
 q = queue.new{concurrency = opts.concurrency, timeout = opts.timeout, on_done = on_done}
-titles = cache.new(opts.cache_size)
+titles = cache.open(opts.cache_dir, opts.cache_size)
 effective_range = opts.range
 
 publish_idle(true)

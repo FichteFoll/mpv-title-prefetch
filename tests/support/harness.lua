@@ -55,6 +55,8 @@ local function write_opts(overrides)
     -- Applies to the plugin and to mpv's own ytdl_hook, so that no test reaches the real yt-dlp.
     -- An explicit entry in `script_opts` overrides it.
     all["ytdl_hook-ytdl_path"] = utils.join_path(env("TP_TESTS"), "support/fake-yt-dlp")
+    -- Keeps the suite out of the user's title cache; a test's own `cache_dir` overrides it.
+    all["title-prefetch-cache_dir"] = utils.join_path(env("TP_TMP"), "cache")
     for key, value in pairs(remembered_opts) do
         all["title-prefetch-" .. key] = format_opt(value)
     end

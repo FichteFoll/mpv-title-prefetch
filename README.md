@@ -62,6 +62,7 @@ Changes at runtime take effect immediately.
 | `resolve_remote` | `yes` | resolve `http(s)://` and `ytdl://` entries via yt-dlp |
 | `resolve_local` | `yes` | resolve local files via an mpv probe |
 | `cache_size` | `500` | maximum cached titles, FIFO; `0` = no cache, negative = unlimited |
+| `cache_dir` | `~~cache/title-prefetch` | directory of the title cache, see below; empty = no cache |
 | `concurrency` | `4` | maximum simultaneous subprocesses |
 | `timeout` | `30` | seconds before a subprocess is aborted and counted as failed |
 | `mpv_path` | `mpv` | executable used for the local probe |
@@ -108,7 +109,18 @@ unlike the option prefix `title-prefetch`.
   While mpv is idle with a playlist,
   the window is centered on the first entry,
   and that entry is resolved as well.
-- Titles are cached FIFO up to `cache_size`.
+- Titles are cached on disk in `cache_dir`,
+  one JSON file per entry,
+  so they survive restarts
+  and are shared by mpv instances running at the same time.
+  `~~cache` is `~/.cache/mpv` on Linux.
+  It does not resolve with `--no-config`,
+  where the cache is disabled with a warning,
+  as for any relative path.
+- The cache holds up to `cache_size` titles, FIFO.
+  Each instance enforces the limit on the entries it knows,
+  so the directory can briefly exceed it
+  while several instances run.
   The cache entry of a file is refreshed whenever it is played.
   A playback that yields no title drops the cached title
   and marks the file as failed.

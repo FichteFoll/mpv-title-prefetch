@@ -22,6 +22,14 @@ function utils.join_path(p1, p2) end
 ---@return string? error
 function utils.file_info(path) end
 
+---@alias ReaddirFilter "files"|"dirs"|"normal"|"all"
+
+---@param path string
+---@param filter? ReaddirFilter defaults to `"normal"`
+---@return string[]? names
+---@return string? error
+function utils.readdir(path, filter) end
+
 ---@param str string
 ---@param trail? boolean
 ---@return any value
@@ -33,5 +41,8 @@ function utils.parse_json(str, trail) end
 ---@return string? json
 ---@return string? error
 function utils.format_json(v) end
+
+---@return integer
+function utils.getpid() end
 
 return utils
