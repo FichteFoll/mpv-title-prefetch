@@ -169,7 +169,9 @@ local function run_pass()
     local cached_titles = {}
     ---@type string[]
     local pending = {}
-    for _, i in ipairs(window.indices(#playlist, pos, effective_range)) do
+    local cached_count = 0
+    local indices = window.indices(#playlist, pos, effective_range)
+    for _, i in ipairs(indices) do
         local entry = playlist[i + 1]
         local filename = entry.filename
         -- A failed entry is never cached in memory, so looking it up would only read the disk.
@@ -178,6 +180,7 @@ local function run_pass()
             local cached = titles:get(filename)
             if cached then
                 cached_titles[filename] = cached
+                cached_count = cached_count + 1
             elseif not q:is_running(filename) then
                 pending[#pending + 1] = filename
             end
@@ -198,6 +201,12 @@ local function run_pass()
                 jobs[#jobs + 1] = job
             end
         end
+    end
+    if cached_count > 0 or #jobs > 0 then
+        msg.debug(string.format(
+            "pass: %d in window, %d cached, %d to resolve",
+            #indices, cached_count, #jobs
+        ))
     end
     q:set_wanted(jobs)
     publish_idle(not q:busy())

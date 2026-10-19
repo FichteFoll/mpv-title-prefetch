@@ -3,9 +3,14 @@
 
 -- Resolves titles of local files by probing them with a headless mpv.
 
+local msg = require("mp.msg")
 local utils = require("mp.utils")
 
 local local_files = {}
+
+-- Probe executables whose run failed because they could not be started.
+---@type table<string, true>
+local missing = {}
 
 local probe_path = utils.join_path(
     assert(mp.get_script_directory(), "title-prefetch must be installed as a directory script"),
@@ -45,25 +50,36 @@ function local_files.matches(filename)
     return info ~= nil and info.is_file
 end
 
----@param stdout string
----@param _ SubprocessResult
----@return string?
-local function parse(stdout, _)
-    local data = utils.parse_json(stdout)
-    if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
-        return nil
+---@param exe string
+---@return JobParse
+local function parser(exe)
+    return function(stdout, result)
+        -- The retry keeps the entry out of `failed`, so it is probed once `mpv_path` changes.
+        if result.error_string == "init" then
+            if not missing[exe] then
+                msg.warn("cannot start the local probe executable " .. exe
+                    .. "; skipping local files until mpv_path changes")
+            end
+            missing[exe] = true
+            return nil, true
+        end
+        local data = utils.parse_json(stdout)
+        if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
+            return nil
+        end
+        return data.title
     end
-    return data.title
 end
 
 ---@param filename string
----@param opts Options
+---@param exe string probe executable
+---@param parse JobParse
 ---@return Job
-local function job(filename, opts)
+local function job(filename, exe, parse)
     return {
         key = filename,
         args = {
-            opts.mpv_path,
+            exe,
             "--no-config", "--load-scripts=no", "--idle=no", "--really-quiet",
             "--vo=null", "--ao=null", "--pause", "--ytdl=no",
             "--script=" .. probe_path,
@@ -76,7 +92,12 @@ end
 ---@param opts Options
 ---@return JobFactory
 function local_files.prepare(opts)
-    return function(filename) return job(filename, opts) end
+    local exe = opts.mpv_path
+    if missing[exe] then
+        return function() return nil end
+    end
+    local parse = parser(exe)
+    return function(filename) return job(filename, exe, parse) end
 end
 
 return local_files

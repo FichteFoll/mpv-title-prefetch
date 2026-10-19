@@ -15,6 +15,9 @@ local DEFAULT_PATHS = {"yt-dlp", "yt-dlp_x86", "youtube-dl"}
 ---@type table<string, true>
 local missing = {}
 
+-- Whether the absence of every candidate has been warned about since one was last found.
+local warned_none = false
+
 ---@return boolean
 local function is_windows()
     return mp.get_property_native("platform") == "windows"
@@ -119,8 +122,13 @@ function ytdl.prepare()
     local exe = executable()
     msg.debug("yt-dlp executable: " .. (exe or "none left to try"))
     if not exe then
+        if not warned_none then
+            msg.warn("no yt-dlp executable can be started; skipping remote entries")
+            warned_none = true
+        end
         return function() return nil end
     end
+    warned_none = false
     -- Format and subtitle arguments are omitted, because only the title is needed.
     local base_args = {exe, "--no-warnings", "--flat-playlist", "--no-playlist", "-J"}
     local raw_options = mp.get_property_native("options/ytdl-raw-options", {})

@@ -3,6 +3,8 @@
 
 -- Runs title-resolving subprocesses with a concurrency limit and a timeout.
 
+local msg = require("mp.msg")
+
 ---@class Job
 ---@field key string playlist entry filename; at most one job per key runs at a time
 ---@field args string[] subprocess command line
@@ -11,6 +13,7 @@
 ---@class SubprocessResult
 ---@field status integer exit code, or a negative value if the process did not exit normally
 ---@field stdout string?
+---@field stderr string?
 ---@field error_string string "init" if the executable could not be started
 ---@field killed_by_us boolean
 
@@ -75,12 +78,51 @@ local function parse_result(job, success, result)
     return title
 end
 
+---@param success boolean
+---@param result? SubprocessResult
+---@param err? string
+---@return string
+local function failure_reason(success, result, err)
+    if not success or not result then
+        return tostring(err)
+    end
+    if result.killed_by_us then
+        return "aborted after the timeout"
+    end
+    local reason = "exit status " .. result.status
+    if result.error_string ~= "" then
+        reason = reason .. " (" .. result.error_string .. ")"
+    end
+    local line = (result.stderr or ""):match("[^\r\n]+")
+    if line then
+        reason = reason .. ": " .. line
+    end
+    return reason
+end
+
+---@param job Job
+---@param success boolean
+---@param result? SubprocessResult
+---@param err? string
+---@param title? string
+local function log_result(job, success, result, err, title)
+    if title then
+        msg.verbose("resolved " .. job.key .. ": " .. title)
+    elseif success and result and result.status == 0 and not result.killed_by_us then
+        msg.verbose("no title for " .. job.key)
+    else
+        msg.verbose("failed " .. job.key .. ": " .. failure_reason(success, result, err))
+    end
+end
+
 ---@private
 ---@param job Job
 function Queue:start(job)
     self.running[job.key] = true
     self.running_count = self.running_count + 1
+    msg.debug("starting " .. job.key .. " (" .. self.running_count .. "/" .. self.concurrency .. ")")
 
+    local timeout = self.timeout
     ---@type MpTimer?
     local timer
     local request = mp.command_native_async({
@@ -88,7 +130,8 @@ function Queue:start(job)
         args = job.args,
         playback_only = false,
         capture_stdout = true,
-    }, function(success, result)
+        capture_stderr = true,
+    }, function(success, result, err)
         -- The callback always runs asynchronously, so the timer is already set.
         if timer then
             timer:kill()
@@ -96,11 +139,15 @@ function Queue:start(job)
         self.running[job.key] = nil
         self.running_count = self.running_count - 1
         local title, retry = parse_result(job, success, result)
+        if not retry then
+            log_result(job, success, result, err, title)
+        end
         self:start_pending()
         self.on_done(job.key, title, retry)
     end)
     if request then
-        timer = mp.add_timeout(self.timeout, function()
+        timer = mp.add_timeout(timeout, function()
+            msg.warn("timed out after " .. tostring(timeout) .. " s: " .. job.key)
             mp.abort_async_command(request)
         end)
     end
@@ -116,12 +163,24 @@ end
 ---Replace all not-yet-started jobs with `jobs`, skipping those whose key is running.
 ---@param jobs Job[]
 function Queue:set_wanted(jobs)
+    ---@type table<string, true>
+    local wanted = {}
     ---@type Job[]
     local pending = {}
     for _, job in ipairs(jobs) do
+        wanted[job.key] = true
         if not self.running[job.key] then
             pending[#pending + 1] = job
         end
+    end
+    local dropped = 0
+    for _, job in ipairs(self.pending) do
+        if not wanted[job.key] then
+            dropped = dropped + 1
+        end
+    end
+    if dropped > 0 then
+        msg.debug("dropped " .. dropped .. " pending jobs")
     end
     self.pending = pending
     self:start_pending()
