@@ -130,14 +130,49 @@ unlike the option prefix `title-prefetch`.
 - A yt-dlp candidate that cannot be started is not a failure.
   The entry is retried with the next candidate.
   If no candidate can be started,
-  remote entries are skipped for the session,
-  without being marked as failed.
+  the script warns once
+  and skips remote entries for the session,
+  without marking them as failed.
 - Local titles come from a headless `mpv` probe,
   so `mpv_path` must point to mpv.
   This reuses mpv's own demuxers and metadata rules.
+  If `mpv_path` cannot be started,
+  the script warns once
+  and skips local files,
+  without marking them as failed,
+  until `mpv_path` changes.
 - A local playlist file or archive gets no title and counts as failed,
   because mpv replaces it by its items when it is played,
   and the title of its first item is not its own.
+
+## Logging
+
+By default, the script only prints warnings and errors:
+
+- an mpv build without writable `playlist/N/title`,
+- an unusable `cache_dir`,
+- a failed cache write,
+- a probe or yt-dlp executable that cannot be started
+  (mpv itself also prints `Subprocess failed: init` for each attempt),
+- a subprocess that hits the `timeout`,
+- an invalid `resolve-more` argument.
+
+Individual resolution failures,
+including yt-dlp's error messages,
+are not shown by default.
+
+`--msg-level=title_prefetch=v` adds one line per resolved entry,
+with the title or the reason it failed,
+and the cache directory in use.
+At this level, mpv itself also logs the command line of every subprocess
+under the script's prefix,
+and `Subprocess failed: killed` for one that hits the `timeout`.
+
+`--msg-level=title_prefetch=debug` adds the scheduling details:
+passes that do work,
+started and dropped jobs,
+cache evictions
+and ignored cache files.
 
 ## Development
 
