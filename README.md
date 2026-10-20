@@ -257,6 +257,14 @@ limits the work to a window around the current entry,
 and asks mpv itself for local titles,
 so it matches mpv's own results.
 
+## AI Assistance
+
+This project was developed with the assistance of large language models,
+specifically Anthropic's Claude,
+which contributed to the code, tests and documentation.
+Commits with such contributions
+carry a `Co-Authored-By` trailer naming the model.
+
 ## License
 
 MIT,
