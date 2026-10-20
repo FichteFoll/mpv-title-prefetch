@@ -257,6 +257,15 @@ local function write_atomically(path, content)
     return true
 end
 
+-- `utils.format_json` orders object keys by table traversal, which varies between runs,
+-- so the object is assembled from encoded strings to keep the files reproducible.
+---@param key string
+---@param value string
+---@return string
+local function format_entry(key, value)
+    return '{"filename":' .. utils.format_json(key) .. ',"title":' .. utils.format_json(value) .. "}"
+end
+
 ---Store `value` under `key` as the newest entry, also when `key` already exists.
 ---@param key string
 ---@param value string
@@ -266,8 +275,7 @@ function Cache:put(key, value)
     end
     key = normalize(key)
     local name = hash(key) .. ".json"
-    local ok, err = write_atomically(self:file_path(name),
-        utils.format_json({filename = key, title = value}) --[[@as string]])
+    local ok, err = write_atomically(self:file_path(name), format_entry(key, value))
     if not ok then
         msg.warn("cannot write the title cache entry for " .. key .. ": " .. tostring(err))
     end
