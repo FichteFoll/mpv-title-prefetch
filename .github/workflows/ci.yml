@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      MISE_LOCKED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+      - run: mise run lint
+
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      # git and zstd must be present before checkout and cache, respectively.
+      - name: Install build and test dependencies
+        run: >-
+          pacman -Syu --noconfirm --needed
+          git zstd base-devel meson ninja pkgconf
+          ffmpeg libplacebo libass luajit zip unzip
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Hash the versions of the main mpv libraries
+        id: deps
+        run: |
+          hash=$(pacman -Q ffmpeg libplacebo libass luajit | sha256sum | cut -d' ' -f1)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/mpv
+          key: mpv-${{ hashFiles('tests/build-mpv.sh') }}-${{ steps.deps.outputs.hash }}
+      # A library soname bump on rolling Arch leaves a restored binary
+      # that cannot start, and tests/build-mpv.sh would not reconfigure
+      # an existing build/ directory, so discard it.
+      - name: Discard a cached mpv build that cannot start
+        run: |
+          if [ -e .cache/mpv/build ] && ! .cache/mpv/build/mpv --version >/dev/null 2>&1; then
+            rm -rf .cache/mpv/build
+          fi
+      - run: tests/build-mpv.sh
+      - run: tests/run.sh
+      - run: tests/test-package.sh
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/package.sh
+      # Generated notes are a stopgap until a changelog format is chosen.
+      - name: Create a draft release
+        run: >-
+          gh release create "$GITHUB_REF_NAME" .cache/dist/title-prefetch.zip
+          --draft --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+
+  snapshot:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: snapshot
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # concurrency does not order runs by commit,
+      # so an older, slower run must not move the tag back.
+      - name: Check that the commit is still the head of main
+        id: head
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping snapshot, main has moved on to $head"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.head.outputs.current == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: steps.head.outputs.current == 'true'
+        run: tools/package.sh
+      # The tag is moved through the API rather than with git push,
+      # so that checkout does not need to persist credentials.
+      - name: Move the snapshot tag to the commit
+        if: steps.head.outputs.current == 'true'
+        run: |
+          # matching-refs matches by prefix, hence the exact comparison.
+          exists=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/snapshot" \
+            --jq 'map(select(.ref == "refs/tags/snapshot")) | length')
+          if [ "$exists" -gt 0 ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/snapshot" \
+              -f sha="$GITHUB_SHA" -F force=true
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref=refs/tags/snapshot -f sha="$GITHUB_SHA"
+          fi
+      - name: Create or update the snapshot release
+        if: steps.head.outputs.current == 'true'
+        run: |
+          notes="Rolling build of \`main\` at $GITHUB_SHA, rebuilt on every push."
+          notes="$notes Requires mpv with PR #18599, see the README."
+          if gh release view snapshot >/dev/null 2>&1; then
+            gh release edit snapshot --prerelease --notes "$notes"
+          else
+            gh release create snapshot --prerelease --title Snapshot --notes "$notes" --verify-tag
+          fi
+      - if: steps.head.outputs.current == 'true'
+        run: gh release upload snapshot .cache/dist/title-prefetch.zip --clobber

@@ -34,6 +34,26 @@ and disables itself for the session.
 
 ## Installation
 
+Download `title-prefetch.zip`
+from the [snapshot pre-release](https://github.com/FichteFoll/mpv-title-prefetch/releases/tag/snapshot),
+which is rebuilt from `main` on every push,
+or from a versioned release,
+and extract it into the mpv config directory.
+That is `~/.config/mpv/` on Linux and macOS,
+and `%APPDATA%/mpv/` or `portable_config/` on Windows.
+For example:
+
+```
+curl -L -o /tmp/title-prefetch.zip https://github.com/FichteFoll/mpv-title-prefetch/releases/download/snapshot/title-prefetch.zip && unzip -o /tmp/title-prefetch.zip -d ~/.config/mpv
+```
+
+The example config ships as `script-opts/title-prefetch.conf.example`,
+so that extracting an update never overwrites an existing `title-prefetch.conf`.
+To use it,
+rename or copy it to `title-prefetch.conf`.
+
+From a git checkout instead:
+
 1. Copy or symlink the `title-prefetch/` directory
    into `~/.config/mpv/scripts/`.
 2. Optionally, copy `title-prefetch.conf`
@@ -202,8 +222,22 @@ The tests need it,
 plus `ffmpeg` for the fixtures.
 `mise run test` accepts test names as arguments to run a subset.
 
-`mise run lint` runs the LuaLS type check and `shellcheck`.
+`mise run lint` runs the LuaLS type check, `shellcheck`
+and `actionlint` over `.github/workflows/`.
 `types/` holds handwritten definitions of the parts of the mpv API that the code uses.
+
+`mise.lock` is committed,
+and CI installs the tools from it in locked mode.
+After changing a tool in `mise.toml`,
+run `mise lock`.
+
+`mise run package` builds the release zip into `.cache/dist/title-prefetch.zip`,
+and `mise run test-package` checks its layout.
+
+CI lints and tests every push and pull request.
+Pushes to `main` update the `snapshot` pre-release.
+Tags matching `v*` create a draft release with generated notes,
+to be reviewed and published by hand.
 
 `user-data/title-prefetch/idle` is a hook for tests and debugging,
 not a stable interface.
