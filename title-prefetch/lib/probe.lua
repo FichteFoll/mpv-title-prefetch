@@ -5,6 +5,14 @@
 -- The plugin does not load this file itself.
 -- Prints the loaded file's title as JSON to stdout, e.g. `{"title":"..."}` or `{}`, and quits.
 -- A playlist file or archive yields no title.
+--
+-- The probe answers from `on_preloaded`,
+-- which mpv runs after it opened the file and read its metadata,
+-- but before it selects tracks and sets up decoders.
+-- Measured for a 120 s 1080p H.264 file,
+-- this cut a probe from 0.06-0.07 s to 0.05 s and its peak memory from 148 MB to 72 MB.
+-- `--vid=no --aid=no --sid=no` gain nothing on top,
+-- and without the hook they abort the load before any event.
 
 -- A single-file script's directory is not on `package.path`.
 local source = debug.getinfo(1, "S").source
@@ -33,8 +41,8 @@ mp.register_event("end-file", function(event)
     report(nil)
 end)
 
-mp.register_event("file-loaded", function()
-    -- `quit` is asynchronous, so mpv may still load the first item after the redirect.
+mp.add_hook("on_preloaded", 50, function()
+    -- `quit` is asynchronous, so mpv may still preload the first item after the redirect.
     if redirected then
         return
     end
