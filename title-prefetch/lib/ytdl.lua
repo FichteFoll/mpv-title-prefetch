@@ -114,10 +114,9 @@ local function executable()
     return nil
 end
 
----@param stdout string
+---@param data any parsed JSON of one URL
 ---@return string?
-local function title_from_json(stdout)
-    local data = utils.parse_json(stdout)
+local function title_of(data)
     -- For `_type == "playlist"`, the playlist's title is used unchanged.
     if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
         return nil
@@ -130,12 +129,70 @@ local function title_from_json(stdout)
     return data.title
 end
 
+---@param text string
+---@return string[] lines without a trailing `\r`, empty lines dropped
+local function lines_of(text)
+    ---@type string[]
+    local lines = {}
+    for line in text:gmatch("[^\n]+") do
+        line = line:gsub("\r$", "")
+        if line ~= "" then
+            lines[#lines + 1] = line
+        end
+    end
+    return lines
+end
+
+---Match the output of one `-J` run to its URLs.
+---With several URLs, `-J` prints one line per URL in input order, with `null` for a failure,
+---and flushes each line, so a run killed by the timeout keeps its finished lines.
+---yt-dlp exits with status 1 if any URL failed, so the status says nothing about a single URL.
+---@param keys string[]
+---@param stdout string
+---@param stderr string
+---@return table<string, KeyOutcome> outcomes keys without a usable line are left out
+local function outcomes_of(keys, stdout, stderr)
+    ---@type string[]
+    local errors = {}
+    for _, line in ipairs(lines_of(stderr)) do
+        if line:find("^ERROR:") then
+            errors[#errors + 1] = line
+        end
+    end
+    -- The n-th `null` line takes the n-th `ERROR:` line, which is best-effort and only affects logging.
+    local next_error = 1
+    ---@type table<string, KeyOutcome>
+    local outcomes = {}
+    for i, line in ipairs(lines_of(stdout)) do
+        local key = keys[i]
+        if not key then
+            break
+        end
+        if line == "null" then
+            if errors[next_error] then
+                outcomes[key] = {detail = errors[next_error]}
+                next_error = next_error + 1
+            end
+        else
+            -- A line that does not parse, such as one truncated by a kill, fails with the run's reason.
+            local data = utils.parse_json(line)
+            if type(data) == "table" then
+                outcomes[key] = {title = title_of(data)}
+            end
+        end
+    end
+    return outcomes
+end
+
+---Batching saves the startup of about 0.5 s of CPU per process,
+---while yt-dlp resolves the URLs of one process one after another.
 ---@param exe string
 ---@param base_args string[] the arguments before `--`
+---@param batch_size integer
 ---@return Runner
-local function runner(exe, base_args)
+local function runner(exe, base_args, batch_size)
     return {
-        batch_size = 1,
+        batch_size = batch_size,
         args = function(keys)
             -- Copied, because `base_args` is shared by every run of this runner.
             -- Not via `table.unpack`, which LuaJIT lacks.
@@ -144,7 +201,9 @@ local function runner(exe, base_args)
                 args[i] = arg
             end
             args[#args + 1] = "--"
-            args[#args + 1] = (keys[1]:gsub("^ytdl://", ""))
+            for _, key in ipairs(keys) do
+                args[#args + 1] = (key:gsub("^ytdl://", ""))
+            end
             return args
         end,
         parse = function(keys, stdout, result)
@@ -154,10 +213,7 @@ local function runner(exe, base_args)
                 missing[exe] = true
                 return {retry = true}
             end
-            if result.status ~= 0 or result.killed_by_us then
-                return {}
-            end
-            return {keys = {[keys[1]] = {title = title_from_json(stdout)}}}
+            return {keys = outcomes_of(keys, stdout, result.stderr or "")}
         end,
     }
 end
@@ -215,7 +271,7 @@ function ytdl.prepare(opts)
             base_args[#base_args + 1] = value
         end
     end
-    local job_runner = runner(exe, base_args)
+    local job_runner = runner(exe, base_args, math.max(1, opts.ytdl_batch_size))
     return function(filename) return {key = filename, runner = job_runner} end
 end
 

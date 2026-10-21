@@ -12,7 +12,8 @@ for i = 0, 18 do
         entries[#entries + 1] = "https://example.invalid/slow/" .. i
     end
 end
-h.setup{opts = {range = 3, concurrency = 1}, entries = entries, pos = 0}
+-- `ytdl_batch_size = 1` keeps one URL per start, so that pending jobs can be dropped individually.
+h.setup{opts = {range = 3, concurrency = 1, ytdl_batch_size = 1}, entries = entries, pos = 0}
 
 local function window_titled()
     for _, i in ipairs({6, 7, 8, 10, 11, 12}) do

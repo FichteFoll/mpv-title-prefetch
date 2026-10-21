@@ -3,7 +3,8 @@ local h = require("harness")
 
 local log = h.capture_log("debug")
 
-h.setup{opts = {range = -1}, entries = {
+-- `ytdl_batch_size = 1` keeps one URL per start, so that single starts are counted.
+h.setup{opts = {range = -1, ytdl_batch_size = 1}, entries = {
     h.fixture("titled-1.mkv"),
     "https://example.invalid/slow/1",
     "https://example.invalid/slow/2",

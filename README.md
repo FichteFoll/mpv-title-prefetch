@@ -84,10 +84,11 @@ Changes at runtime take effect immediately.
 | `resolve_local` | `yes` | resolve local files via an mpv probe |
 | `cache_size` | `500` | maximum cached titles, FIFO; `0` = no cache, negative = unlimited |
 | `cache_dir` | `~~cache/title-prefetch` | directory of the title cache, see below; empty = no cache |
-| `concurrency` | `5` | maximum simultaneous subprocesses |
-| `timeout` | `30` | seconds before a subprocess is aborted and counted as failed |
+| `concurrency` | `5` | maximum simultaneous subprocesses; a yt-dlp batch counts as one |
+| `timeout` | `30` | seconds before a subprocess is aborted and counted as failed; a yt-dlp batch counts as one |
 | `mpv_path` | `mpv` | executable used for the local probe |
 | `ytdl_extractor_args` | `default` | yt-dlp `--extractor-args` for title lookups, whitespace-separated `IE_KEY:ARGS` entries; `default` = a built-in set that skips YouTube requests a title does not need, see `DEFAULT_EXTRACTOR_ARGS` in `lib/ytdl.lua`; empty = none |
+| `ytdl_batch_size` | `5` | remote URLs resolved by one yt-dlp process, which saves its startup time; `1` (or less) = no batching |
 
 A `ytdl_extractor_args` value containing commas
 has to be given as `--script-opts-append=title-prefetch-ytdl_extractor_args=...`
@@ -182,6 +183,13 @@ Ctrl+T change-list script-opts append title-prefetch-range=-1
   For private, removed and non-existent videos,
   yt-dlp only reports a generic `<extractor> video #<id>` title,
   which counts as no title.
+- Remote entries are resolved in batches
+  of up to `ytdl_batch_size` per yt-dlp process,
+  in priority order.
+  A failed URL fails only its own entry.
+  On a timeout,
+  entries whose results yt-dlp had already printed keep their titles,
+  and the others count as failed.
 - A yt-dlp candidate that cannot be started is not a failure.
   The entry is retried with the next candidate.
   If no candidate can be started,
@@ -210,6 +218,7 @@ By default, the script only prints warnings and errors:
 - a probe or yt-dlp executable that cannot be started
   (mpv itself also prints `Subprocess failed: init` for each attempt),
 - a subprocess that hits the `timeout`,
+  listing every entry of the aborted process,
 - an invalid `resolve-range` argument.
 
 Individual resolution failures,

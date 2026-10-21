@@ -18,13 +18,14 @@ Options (script-opts/title-prefetch.conf or --script-opts=title-prefetch-<key>=<
     cache_size=500      maximum cached titles (FIFO); 0 = no cache, negative = unlimited
     cache_dir=~~cache/title-prefetch
                         directory of the title cache; empty = no cache
-    concurrency=5       maximum simultaneous subprocesses
-    timeout=30          seconds before a subprocess is aborted
+    concurrency=5       maximum simultaneous subprocesses; a yt-dlp batch is one
+    timeout=30          seconds before a subprocess, or a whole yt-dlp batch, is aborted
     mpv_path=mpv        executable used for the local probe
     ytdl_extractor_args=default
                         yt-dlp --extractor-args for title lookups,
                         whitespace-separated IE_KEY:ARGS entries;
                         `default` = the built-in set in lib/ytdl.lua, empty = none
+    ytdl_batch_size=5   remote URLs per yt-dlp process; 1 = no batching
 
 Script messages (script-message-to title_prefetch <message> <args>):
     resolve-range <first> [<last>]
@@ -59,6 +60,7 @@ local ytdl = require("lib.ytdl")
 ---@field timeout number
 ---@field mpv_path string
 ---@field ytdl_extractor_args string
+---@field ytdl_batch_size integer
 local opts = {
     range = 5,
     resolve_remote = true,
@@ -69,6 +71,7 @@ local opts = {
     timeout = 30,
     mpv_path = "mpv",
     ytdl_extractor_args = "default",
+    ytdl_batch_size = 5,
 }
 
 ---@class Resolver
