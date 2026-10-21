@@ -83,7 +83,7 @@ Changes at runtime take effect immediately.
 | `resolve_local` | `yes` | resolve local files via an mpv probe |
 | `cache_size` | `500` | maximum cached titles, FIFO; `0` = no cache, negative = unlimited |
 | `cache_dir` | `~~cache/title-prefetch` | directory of the title cache, see below; empty = no cache |
-| `concurrency` | `4` | maximum simultaneous subprocesses |
+| `concurrency` | `5` | maximum simultaneous subprocesses |
 | `timeout` | `30` | seconds before a subprocess is aborted and counted as failed |
 | `mpv_path` | `mpv` | executable used for the local probe |
 

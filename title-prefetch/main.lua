@@ -18,7 +18,7 @@ Options (script-opts/title-prefetch.conf or --script-opts=title-prefetch-<key>=<
     cache_size=500      maximum cached titles (FIFO); 0 = no cache, negative = unlimited
     cache_dir=~~cache/title-prefetch
                         directory of the title cache; empty = no cache
-    concurrency=4       maximum simultaneous subprocesses
+    concurrency=5       maximum simultaneous subprocesses
     timeout=30          seconds before a subprocess is aborted
     mpv_path=mpv        executable used for the local probe
 
@@ -60,7 +60,7 @@ local opts = {
     resolve_local = true,
     cache_size = 500,
     cache_dir = "~~cache/title-prefetch",
-    concurrency = 4,
+    concurrency = 5,
     timeout = 30,
     mpv_path = "mpv",
 }
