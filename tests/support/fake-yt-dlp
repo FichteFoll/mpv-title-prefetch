@@ -11,6 +11,9 @@ case $url in
     https://example.invalid/video/*)
         printf '{"title":"Remote %s","_type":"video"}\n' "$id"
         ;;
+    https://example.invalid/private/*)
+        printf '{"title":"example-private video #%s","extractor":"example:private","id":"%s","_type":"video"}\n' "$id" "$id"
+        ;;
     https://example.invalid/slow/*)
         sleep 0.5
         printf '{"title":"Slow %s"}\n' "$id"

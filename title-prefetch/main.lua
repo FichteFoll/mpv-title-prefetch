@@ -21,6 +21,10 @@ Options (script-opts/title-prefetch.conf or --script-opts=title-prefetch-<key>=<
     concurrency=5       maximum simultaneous subprocesses
     timeout=30          seconds before a subprocess is aborted
     mpv_path=mpv        executable used for the local probe
+    ytdl_extractor_args=default
+                        yt-dlp --extractor-args for title lookups,
+                        whitespace-separated IE_KEY:ARGS entries;
+                        `default` = the built-in set in lib/ytdl.lua, empty = none
 
 Script messages (script-message-to title_prefetch <message> <args>):
     resolve-range <first> [<last>]
@@ -54,6 +58,7 @@ local ytdl = require("lib.ytdl")
 ---@field concurrency integer
 ---@field timeout number
 ---@field mpv_path string
+---@field ytdl_extractor_args string
 local opts = {
     range = 5,
     resolve_remote = true,
@@ -63,6 +68,7 @@ local opts = {
     concurrency = 5,
     timeout = 30,
     mpv_path = "mpv",
+    ytdl_extractor_args = "default",
 }
 
 ---@class Resolver

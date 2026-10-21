@@ -9,7 +9,32 @@ local utils = require("mp.utils")
 
 local ytdl = {}
 
-local DEFAULT_PATHS = {"yt-dlp", "yt-dlp_x86", "youtube-dl"}
+-- Unlike ytdl_hook, without youtube-dl,
+-- which rejects `--ignore-no-formats-error` and `--extractor-args`.
+local DEFAULT_PATHS = {"yt-dlp", "yt-dlp_x86"}
+
+-- What `default` in `ytdl_extractor_args` expands to.
+-- Only the title is needed, so these skip the YouTube requests that only serve
+-- formats and other metadata.
+-- Measured with yt-dlp 2026.08.19 for one watch URL, without cookies:
+--   no extractor args                                  2.6-3.0 s
+--   skip=hls,dash,translated_subs                      2.6 s
+--   + player_skip=js, which skips the JS challenge     1.6-2.0 s
+--   + player_skip=webpage,configs                      1.3-1.4 s
+--   + player_skip=initial_data, the `next` request     0.6 s
+-- The title comes from the player response.
+-- `initial_data` only adds metadata such as the heatmap, chapters and the channel.
+-- Thumbnails cost nothing, because their URLs are built from templates.
+-- Pinning `player_client` saved another 0.2 s,
+-- but yt-dlp rotates the clients that work too often for a default.
+-- With `--ignore-no-formats-error`, age-gated, members-only, geo-blocked,
+-- ended-live and upcoming videos still yield their titles,
+-- while private, removed and non-existent ones yield yt-dlp's generic title.
+-- yt-dlp keeps only the last `--extractor-args` per extractor key,
+-- so a `youtube:` entry in `ytdl-raw-options` replaces this one.
+local DEFAULT_EXTRACTOR_ARGS = {
+    "youtube:player_skip=webpage,configs,js,initial_data;skip=hls,dash,translated_subs",
+}
 
 -- Candidates whose run failed because they could not be started.
 ---@type table<string, true>
@@ -104,7 +129,26 @@ local function parser(exe)
         if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
             return nil
         end
+        -- yt-dlp's generic title, which `--ignore-no-formats-error` lets through.
+        if type(data.extractor) == "string" and type(data.id) == "string"
+            and data.title == (data.extractor:gsub(":", "-")) .. " video #" .. data.id then
+            return nil
+        end
         return data.title
+    end
+end
+
+---Append `--extractor-args <entry>` to `args` for every entry of `value`,
+---expanding the token `default` to `DEFAULT_EXTRACTOR_ARGS`.
+---@param args string[]
+---@param value string whitespace-separated `IE_KEY:ARGS` entries
+local function append_extractor_args(args, value)
+    for token in value:gmatch("%S+") do
+        local entries = token == "default" and DEFAULT_EXTRACTOR_ARGS or {token}
+        for _, entry in ipairs(entries) do
+            args[#args + 1] = "--extractor-args"
+            args[#args + 1] = entry
+        end
     end
 end
 
@@ -117,8 +161,9 @@ function ytdl.matches(filename)
 end
 
 ---Look up the executable and build the URL-independent arguments once, for one scheduling pass.
+---@param opts Options
 ---@return JobFactory
-function ytdl.prepare()
+function ytdl.prepare(opts)
     local exe = executable()
     msg.debug("yt-dlp executable: " .. (exe or "none left to try"))
     if not exe then
@@ -130,7 +175,14 @@ function ytdl.prepare()
     end
     warned_none = false
     -- Format and subtitle arguments are omitted, because only the title is needed.
-    local base_args = {exe, "--no-warnings", "--flat-playlist", "--no-playlist", "-J"}
+    -- `--ignore-no-formats-error` yields the title of a video without playable formats,
+    -- such as an age-gated, members-only, geo-blocked or upcoming one,
+    -- and of one whose formats all need the JS challenge that `player_skip=js` skips.
+    -- The extractor args come before the raw options,
+    -- so that an `extractor-args` raw option for the same extractor wins.
+    local base_args = {exe, "--no-warnings", "--flat-playlist", "--no-playlist", "-J",
+        "--ignore-no-formats-error"}
+    append_extractor_args(base_args, opts.ytdl_extractor_args)
     local raw_options = mp.get_property_native("options/ytdl-raw-options", {})
     for key, value in pairs(raw_options) do
         base_args[#base_args + 1] = "--" .. key

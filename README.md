@@ -60,8 +60,9 @@ From a git checkout instead:
    into `~/.config/mpv/script-opts/`.
 
 yt-dlp is optional.
-It is only needed for remote URLs
-and is found the way `ytdl_hook` finds it,
+It is required for remote URLs only,
+and youtube-dl is not supported.
+yt-dlp is found the way `ytdl_hook` finds it,
 including its `ytdl_path` option.
 `ytdl-raw-options` are honored,
 so cookies and proxies apply.
@@ -86,6 +87,19 @@ Changes at runtime take effect immediately.
 | `concurrency` | `5` | maximum simultaneous subprocesses |
 | `timeout` | `30` | seconds before a subprocess is aborted and counted as failed |
 | `mpv_path` | `mpv` | executable used for the local probe |
+| `ytdl_extractor_args` | `default` | yt-dlp `--extractor-args` for title lookups, whitespace-separated `IE_KEY:ARGS` entries; `default` = a built-in set that skips YouTube requests a title does not need, see `DEFAULT_EXTRACTOR_ARGS` in `lib/ytdl.lua`; empty = none |
+
+A `ytdl_extractor_args` value containing commas
+has to be given as `--script-opts-append=title-prefetch-ytdl_extractor_args=...`
+or in brackets on the command line,
+as in `--script-opts=title-prefetch-ytdl_extractor_args=[...]`,
+because a plain `--script-opts=` splits at the comma.
+The config file is not affected.
+`default` can be combined with other entries,
+for example `generic:impersonate default`.
+An `extractor-args` entry in `ytdl-raw-options` for the same extractor
+replaces the built-in one,
+because yt-dlp keeps only the last `--extractor-args` per extractor.
 
 ## Commands
 
@@ -161,6 +175,13 @@ Ctrl+T change-list script-opts append title-prefetch-range=-1
 - A failed resolution is not retried during the session,
   unless the entry is played,
   which refreshes it.
+- Remote entries are resolved with `--ignore-no-formats-error`,
+  so videos without playable formats still get their titles.
+  This includes age-gated, members-only and geo-blocked videos,
+  ended live streams and upcoming premieres.
+  For private, removed and non-existent videos,
+  yt-dlp only reports a generic `<extractor> video #<id>` title,
+  which counts as no title.
 - A yt-dlp candidate that cannot be started is not a failure.
   The entry is retried with the next candidate.
   If no candidate can be started,
