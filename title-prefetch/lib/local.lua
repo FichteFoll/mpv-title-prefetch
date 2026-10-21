@@ -50,42 +50,45 @@ function local_files.matches(filename)
     return info ~= nil and info.is_file
 end
 
----@param exe string
----@return JobParse
-local function parser(exe)
-    return function(stdout, result)
-        -- The retry keeps the entry out of `failed`, so it is probed once `mpv_path` changes.
-        if result.error_string == "init" then
-            if not missing[exe] then
-                msg.warn("cannot start the local probe executable " .. exe
-                    .. "; skipping local files until mpv_path changes")
-            end
-            missing[exe] = true
-            return nil, true
-        end
-        local data = utils.parse_json(stdout)
-        if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
-            return nil
-        end
-        return data.title
+---@param stdout string
+---@return string?
+local function probed_title(stdout)
+    local data = utils.parse_json(stdout)
+    if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
+        return nil
     end
+    return data.title
 end
 
----@param filename string
 ---@param exe string probe executable
----@param parse JobParse
----@return Job
-local function job(filename, exe, parse)
+---@return Runner
+local function runner(exe)
     return {
-        key = filename,
-        args = {
-            exe,
-            "--no-config", "--load-scripts=no", "--idle=no", "--really-quiet",
-            "--vo=null", "--ao=null", "--pause", "--ytdl=no",
-            "--script=" .. probe_path,
-            "--", filename,
-        },
-        parse = parse,
+        batch_size = 1,
+        args = function(keys)
+            return {
+                exe,
+                "--no-config", "--load-scripts=no", "--idle=no", "--really-quiet",
+                "--vo=null", "--ao=null", "--pause", "--ytdl=no",
+                "--script=" .. probe_path,
+                "--", keys[1],
+            }
+        end,
+        parse = function(keys, stdout, result)
+            -- The retry keeps the entry out of `failed`, so it is probed once `mpv_path` changes.
+            if result.error_string == "init" then
+                if not missing[exe] then
+                    msg.warn("cannot start the local probe executable " .. exe
+                        .. "; skipping local files until mpv_path changes")
+                end
+                missing[exe] = true
+                return {retry = true}
+            end
+            if result.status ~= 0 or result.killed_by_us then
+                return {}
+            end
+            return {keys = {[keys[1]] = {title = probed_title(stdout)}}}
+        end,
     }
 end
 
@@ -96,8 +99,8 @@ function local_files.prepare(opts)
     if missing[exe] then
         return function() return nil end
     end
-    local parse = parser(exe)
-    return function(filename) return job(filename, exe, parse) end
+    local probe = runner(exe)
+    return function(filename) return {key = filename, runner = probe} end
 end
 
 return local_files

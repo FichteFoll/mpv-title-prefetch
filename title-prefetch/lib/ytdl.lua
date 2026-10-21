@@ -114,28 +114,52 @@ local function executable()
     return nil
 end
 
----@param exe string
----@return JobParse
-local function parser(exe)
-    return function(stdout, result)
-        -- Each retry memoizes one more candidate as missing, so retries are bounded.
-        if result.error_string == "init" then
-            msg.verbose("yt-dlp candidate " .. exe .. " could not be started; trying the next one")
-            missing[exe] = true
-            return nil, true
-        end
-        local data = utils.parse_json(stdout)
-        -- For `_type == "playlist"`, the playlist's title is used unchanged.
-        if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
-            return nil
-        end
-        -- yt-dlp's generic title, which `--ignore-no-formats-error` lets through.
-        if type(data.extractor) == "string" and type(data.id) == "string"
-            and data.title == (data.extractor:gsub(":", "-")) .. " video #" .. data.id then
-            return nil
-        end
-        return data.title
+---@param stdout string
+---@return string?
+local function title_from_json(stdout)
+    local data = utils.parse_json(stdout)
+    -- For `_type == "playlist"`, the playlist's title is used unchanged.
+    if type(data) ~= "table" or type(data.title) ~= "string" or data.title == "" then
+        return nil
     end
+    -- yt-dlp's generic title, which `--ignore-no-formats-error` lets through.
+    if type(data.extractor) == "string" and type(data.id) == "string"
+        and data.title == (data.extractor:gsub(":", "-")) .. " video #" .. data.id then
+        return nil
+    end
+    return data.title
+end
+
+---@param exe string
+---@param base_args string[] the arguments before `--`
+---@return Runner
+local function runner(exe, base_args)
+    return {
+        batch_size = 1,
+        args = function(keys)
+            -- Copied, because `base_args` is shared by every run of this runner.
+            -- Not via `table.unpack`, which LuaJIT lacks.
+            local args = {}
+            for i, arg in ipairs(base_args) do
+                args[i] = arg
+            end
+            args[#args + 1] = "--"
+            args[#args + 1] = (keys[1]:gsub("^ytdl://", ""))
+            return args
+        end,
+        parse = function(keys, stdout, result)
+            -- Each retry memoizes one more candidate as missing, so retries are bounded.
+            if result.error_string == "init" then
+                msg.verbose("yt-dlp candidate " .. exe .. " could not be started; trying the next one")
+                missing[exe] = true
+                return {retry = true}
+            end
+            if result.status ~= 0 or result.killed_by_us then
+                return {}
+            end
+            return {keys = {[keys[1]] = {title = title_from_json(stdout)}}}
+        end,
+    }
 end
 
 ---Append `--extractor-args <entry>` to `args` for every entry of `value`,
@@ -191,19 +215,8 @@ function ytdl.prepare(opts)
             base_args[#base_args + 1] = value
         end
     end
-    local parse = parser(exe)
-
-    return function(filename)
-        -- Copied, because the queue keeps each job's `args`.
-        -- Not via `table.unpack`, which LuaJIT lacks.
-        local args = {}
-        for i, arg in ipairs(base_args) do
-            args[i] = arg
-        end
-        args[#args + 1] = "--"
-        args[#args + 1] = (filename:gsub("^ytdl://", ""))
-        return {key = filename, args = args, parse = parse}
-    end
+    local job_runner = runner(exe, base_args)
+    return function(filename) return {key = filename, runner = job_runner} end
 end
 
 return ytdl
