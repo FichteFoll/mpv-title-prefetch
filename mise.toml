@@ -10,6 +10,20 @@ lockfile = true
 description = "Build the pinned mpv with writable playlist/N/title into .cache/mpv"
 run = "{{config_root}}/tests/build-mpv.sh"
 
+[tasks.link]
+description = "Symlink the script directory into the local mpv config"
+run = '''
+config_dir="${MPV_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/mpv}"
+target="$config_dir/scripts/title-prefetch"
+if [ -e "$target" ] && [ ! -L "$target" ]; then
+    echo "$target exists and is not a symlink" >&2
+    exit 1
+fi
+mkdir -p "$config_dir/scripts"
+ln -sfn "$MISE_PROJECT_ROOT/title-prefetch" "$target"
+echo "$target -> $MISE_PROJECT_ROOT/title-prefetch"
+'''
+
 [tasks.lint]
 description = "Run the LuaLS type check, shellcheck and actionlint"
 run = [

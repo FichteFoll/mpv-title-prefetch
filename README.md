@@ -56,6 +56,8 @@ From a git checkout instead:
 
 1. Copy or symlink the `title-prefetch/` directory
    into `~/.config/mpv/scripts/`.
+   `mise run link` creates the symlink,
+   honoring `MPV_HOME` and `XDG_CONFIG_HOME`.
 2. Optionally, copy `title-prefetch.conf`
    into `~/.config/mpv/script-opts/`.
 
