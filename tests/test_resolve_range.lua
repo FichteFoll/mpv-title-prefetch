@@ -110,7 +110,7 @@ h.wait_until("indices 10-12 are titled", titled(10, 12), 20, function()
         h.expect_eq(h.title(13), nil, "title of index 13")
         h.expect_eq(h.count_log(log, "debug", "resolve-range 10-12: 3 entries, 3 requested"), 1,
             "request line")
-        -- The default concurrency of 4 starts all three jobs in one pass,
+        -- The default concurrency of 5 starts all three jobs in one pass,
         -- and later passes find them running, so they log nothing.
         h.expect_eq(
             h.count_log(log, "debug", "pass: 0 in window, 3 requested, 0 cached, 3 to resolve"), 1,

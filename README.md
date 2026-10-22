@@ -60,8 +60,9 @@ From a git checkout instead:
    into `~/.config/mpv/script-opts/`.
 
 yt-dlp is optional.
-It is only needed for remote URLs
-and is found the way `ytdl_hook` finds it,
+It is required for remote URLs only,
+and youtube-dl is not supported.
+yt-dlp is found the way `ytdl_hook` finds it,
 including its `ytdl_path` option.
 `ytdl-raw-options` are honored,
 so cookies and proxies apply.
@@ -83,9 +84,23 @@ Changes at runtime take effect immediately.
 | `resolve_local` | `yes` | resolve local files via an mpv probe |
 | `cache_size` | `500` | maximum cached titles, FIFO; `0` = no cache, negative = unlimited |
 | `cache_dir` | `~~cache/title-prefetch` | directory of the title cache, see below; empty = no cache |
-| `concurrency` | `4` | maximum simultaneous subprocesses |
-| `timeout` | `30` | seconds before a subprocess is aborted and counted as failed |
+| `concurrency` | `5` | maximum simultaneous subprocesses; a yt-dlp batch counts as one |
+| `timeout` | `30` | seconds before a subprocess is aborted and counted as failed; a yt-dlp batch counts as one |
 | `mpv_path` | `mpv` | executable used for the local probe |
+| `ytdl_extractor_args` | `default` | yt-dlp `--extractor-args` for title lookups, whitespace-separated `IE_KEY:ARGS` entries; `default` = a built-in set that skips YouTube requests a title does not need, see `DEFAULT_EXTRACTOR_ARGS` in `lib/ytdl.lua`; empty = none |
+| `ytdl_batch_size` | `5` | remote URLs resolved by one yt-dlp process, which saves its startup time; `1` (or less) = no batching |
+
+A `ytdl_extractor_args` value containing commas
+has to be given as `--script-opts-append=title-prefetch-ytdl_extractor_args=...`
+or in brackets on the command line,
+as in `--script-opts=title-prefetch-ytdl_extractor_args=[...]`,
+because a plain `--script-opts=` splits at the comma.
+The config file is not affected.
+`default` can be combined with other entries,
+for example `generic:impersonate default`.
+An `extractor-args` entry in `ytdl-raw-options` for the same extractor
+replaces the built-in one,
+because yt-dlp keeps only the last `--extractor-args` per extractor.
 
 ## Commands
 
@@ -161,6 +176,20 @@ Ctrl+T change-list script-opts append title-prefetch-range=-1
 - A failed resolution is not retried during the session,
   unless the entry is played,
   which refreshes it.
+- Remote entries are resolved with `--ignore-no-formats-error`,
+  so videos without playable formats still get their titles.
+  This includes age-gated, members-only and geo-blocked videos,
+  ended live streams and upcoming premieres.
+  For private, removed and non-existent videos,
+  yt-dlp only reports a generic `<extractor> video #<id>` title,
+  which counts as no title.
+- Remote entries are resolved in batches
+  of up to `ytdl_batch_size` per yt-dlp process,
+  in priority order.
+  A failed URL fails only its own entry.
+  On a timeout,
+  entries whose results yt-dlp had already printed keep their titles,
+  and the others count as failed.
 - A yt-dlp candidate that cannot be started is not a failure.
   The entry is retried with the next candidate.
   If no candidate can be started,
@@ -189,6 +218,7 @@ By default, the script only prints warnings and errors:
 - a probe or yt-dlp executable that cannot be started
   (mpv itself also prints `Subprocess failed: init` for each attempt),
 - a subprocess that hits the `timeout`,
+  listing every entry of the aborted process,
 - an invalid `resolve-range` argument.
 
 Individual resolution failures,

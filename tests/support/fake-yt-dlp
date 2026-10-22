@@ -1,26 +1,48 @@
 #!/bin/sh
-# Stand-in for yt-dlp in tests.
-# Logs its arguments as one line to $TP_TMP/ytdl.log and answers by the URL,
-# which is its last argument.
+# Stand-in for yt-dlp in tests, behaving like `yt-dlp -J` with several URLs.
+# The options are the arguments before `--`, and the URLs the ones after it.
+# Logs the whole command line as one line to $TP_TMP/ytdl-invocations.log,
+# and `<options> -- <url>` as one line per URL to $TP_TMP/ytdl.log,
+# right before that URL is answered.
+# Answers every URL in order with one stdout line,
+# which is `null` for a failed URL, whose `ERROR:` line goes to stderr.
+# Exits with status 1 if any URL failed.
 
-printf '%s\n' "$*" >> "${TP_TMP:?}/ytdl.log"
+printf '%s\n' "$*" >> "${TP_TMP:?}/ytdl-invocations.log"
 
-for url; do :; done
-id=${url##*/}
-case $url in
-    https://example.invalid/video/*)
-        printf '{"title":"Remote %s","_type":"video"}\n' "$id"
-        ;;
-    https://example.invalid/slow/*)
-        sleep 0.5
-        printf '{"title":"Slow %s"}\n' "$id"
-        ;;
-    https://example.invalid/fail/*)
-        echo "ERROR: [generic] $id: Unable to download webpage" >&2
-        exit 1
-        ;;
-    *)
-        echo "ERROR: Unsupported URL: $url" >&2
-        exit 1
-        ;;
-esac
+options=
+while [ $# -gt 0 ]; do
+    arg=$1
+    shift
+    [ "$arg" = -- ] && break
+    options="${options:+$options }$arg"
+done
+
+failed=0
+for url; do
+    printf '%s -- %s\n' "$options" "$url" >> "$TP_TMP/ytdl.log"
+    id=${url##*/}
+    case $url in
+        https://example.invalid/video/*)
+            printf '{"title":"Remote %s","_type":"video"}\n' "$id"
+            ;;
+        https://example.invalid/private/*)
+            printf '{"title":"example-private video #%s","extractor":"example:private","id":"%s","_type":"video"}\n' "$id" "$id"
+            ;;
+        https://example.invalid/slow/*)
+            sleep 0.5
+            printf '{"title":"Slow %s"}\n' "$id"
+            ;;
+        https://example.invalid/fail/*)
+            echo null
+            echo "ERROR: [generic] $id: Unable to download webpage" >&2
+            failed=1
+            ;;
+        *)
+            echo null
+            echo "ERROR: Unsupported URL: $url" >&2
+            failed=1
+            ;;
+    esac
+done
+exit "$failed"

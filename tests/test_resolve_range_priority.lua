@@ -11,7 +11,8 @@ for i = 1, 12 do
     entries[#entries + 1] = "https://example.invalid/slow/" .. i
 end
 -- The window is index 1, then index 2.
-h.setup{opts = {range = 2, concurrency = 1}, entries = entries, pos = 0}
+-- `ytdl_batch_size = 1` keeps one URL per start, so that the order of single starts is observed.
+h.setup{opts = {range = 2, concurrency = 1, ytdl_batch_size = 1}, entries = entries, pos = 0}
 
 ---@param indices integer[]
 ---@return boolean

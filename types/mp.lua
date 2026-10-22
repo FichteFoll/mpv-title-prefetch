@@ -97,6 +97,11 @@ function mp.enable_messages(level) end
 function mp.register_event(name, fn) end
 
 ---@param name string
+---@param priority integer
+---@param fn fun(hook?: table)
+function mp.add_hook(name, priority, fn) end
+
+---@param name string
 ---@param fn fun(...: string)
 function mp.register_script_message(name, fn) end
 

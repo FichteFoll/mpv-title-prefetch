@@ -122,9 +122,10 @@ function h.title(i)
     return (mp.get_property("playlist/" .. i .. "/title"))
 end
 
----@return string[] lines of `$TP_TMP/ytdl.log`, one per invocation of the fake yt-dlp
-function h.ytdl_calls()
-    local f = io.open(utils.join_path(env("TP_TMP"), "ytdl.log"), "r")
+---@param name string file name in `$TP_TMP`
+---@return string[] lines empty when the file does not exist
+local function tmp_lines(name)
+    local f = io.open(utils.join_path(env("TP_TMP"), name), "r")
     if not f then
         return {}
     end
@@ -137,8 +138,18 @@ function h.ytdl_calls()
     return lines
 end
 
+---@return string[] lines of `$TP_TMP/ytdl.log`, one per URL passed to the fake yt-dlp
+function h.ytdl_calls()
+    return tmp_lines("ytdl.log")
+end
+
+---@return string[] lines of `$TP_TMP/ytdl-invocations.log`, one per invocation of the fake yt-dlp
+function h.ytdl_invocations()
+    return tmp_lines("ytdl-invocations.log")
+end
+
 ---@param pattern string plain substring
----@return integer count number of fake yt-dlp invocations whose arguments contain `pattern`
+---@return integer count number of `h.ytdl_calls` lines that contain `pattern`
 function h.count_calls(pattern)
     local count = 0
     for _, line in ipairs(h.ytdl_calls()) do
