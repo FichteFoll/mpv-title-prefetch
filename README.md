@@ -107,11 +107,12 @@ because yt-dlp keeps only the last `--extractor-args` per extractor.
 ## Commands
 
 The script registers no key bindings
-and offers a single script message:
+and offers two script messages:
 
 | message | arguments | effect |
 |---|---|---|
 | `resolve-range` | `first` and optional `last`, 0-based indices | resolves the entries at `first` to `last` |
+| `clear-cache` | none | removes the cached titles in `cache_dir` and forgets failed resolutions |
 
 The indices are those of `playlist/N`, inclusive,
 and `last` is clamped to the playlist.
@@ -136,6 +137,21 @@ mp.commandv("script-message-to", "title_prefetch", "resolve-range", tostring(fir
 
 `script-message-to` uses the script name `title_prefetch` with an underscore,
 unlike the option prefix `title-prefetch`.
+
+`clear-cache` removes every cache entry file in `cache_dir`,
+including those of other instances and earlier sessions,
+and also works with `cache_size=0`.
+It forgets the failed resolutions of the session,
+so failed entries in the window are retried right away,
+and those outside it can be requested again with `resolve-range`.
+Titles already written into `playlist/N/title` are kept.
+Other running instances keep the titles they loaded into memory
+until they restart.
+For example, in `input.conf`:
+
+```
+Ctrl+Alt+c script-message-to title_prefetch clear-cache
+```
 
 The `range` option can be changed at runtime,
 which takes effect immediately.
@@ -177,7 +193,8 @@ Ctrl+T change-list script-opts append title-prefetch-range=-1
   and marks the file as failed.
 - A failed resolution is not retried during the session,
   unless the entry is played,
-  which refreshes it.
+  which refreshes it,
+  or `clear-cache` is sent.
 - Remote entries are resolved with `--ignore-no-formats-error`,
   so videos without playable formats still get their titles.
   This includes age-gated, members-only and geo-blocked videos,
@@ -222,6 +239,10 @@ By default, the script only prints warnings and errors:
 - a subprocess that hits the `timeout`,
   listing every entry of the aborted process,
 - an invalid `resolve-range` argument.
+
+`clear-cache` is the one exception:
+it logs a single `info` line with the number of entries it removed
+and of failed resolutions it forgot.
 
 Individual resolution failures,
 including yt-dlp's error messages,

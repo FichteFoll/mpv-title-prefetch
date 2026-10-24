@@ -33,6 +33,8 @@ Script messages (script-message-to title_prefetch <message> <args>):
                         `first` to `last` of `playlist/N`; `last` defaults to `first`;
                         resolved before the window, the latest request first;
                         requests stay until their entries are resolved
+    clear-cache         remove all cached titles in `cache_dir` and forget failed resolutions;
+                        titles already set are kept
 
 Copyright (c) 2026 FichteFoll <fichtefoll2@googlemail.com>
 SPDX-License-Identifier: MIT
@@ -96,7 +98,7 @@ local resolvers = {
 -- State is keyed by playlist entry filename.
 ---@type Cache
 local titles
--- Filenames whose resolution failed or found no title; only playing the entry clears them.
+-- Filenames whose resolution failed or found no title; playing the entry or `clear-cache` clears them.
 ---@type table<string, true>
 local failed = {}
 -- Filenames requested by `resolve-range`, latest request first;
@@ -369,6 +371,23 @@ local function on_resolve_range(...)
     end
 end
 
+---Empty the title cache and forget the failed resolutions, so that they are looked up again.
+local function on_clear_cache()
+    local dir, removed = titles:clear()
+    local forgotten = 0
+    for _ in pairs(failed) do
+        forgotten = forgotten + 1
+    end
+    failed = {}
+    if dir then
+        msg.info(string.format("clear-cache: cache entries removed from %s: %d, failed entries forgotten: %d",
+            dir, removed, forgotten))
+    else
+        msg.info("clear-cache: no cache directory in use, failed entries forgotten: " .. forgotten)
+    end
+    request_pass()
+end
+
 options.read_options(opts, "title-prefetch", on_update)
 q = queue.new{concurrency = opts.concurrency, timeout = opts.timeout, on_done = on_done}
 titles = cache.open(opts.cache_dir, opts.cache_size)
@@ -382,3 +401,4 @@ mp.observe_property("playlist-pos", "number", request_pass)
 mp.observe_property("ytdl", "bool", request_pass)
 mp.register_event("file-loaded", on_file_loaded)
 mp.register_script_message("resolve-range", on_resolve_range)
+mp.register_script_message("clear-cache", on_clear_cache)

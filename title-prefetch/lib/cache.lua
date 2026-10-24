@@ -303,6 +303,25 @@ function Cache:remove(key)
     self:unindex(name)
 end
 
+---Remove every entry file in the directory, including those this instance never loaded,
+---and forget all entries; works whenever there is a directory, whatever the limit.
+---@return string? dir the directory, nil when there is none
+---@return integer removed number of entry files removed
+function Cache:clear()
+    if not self.dir then
+        return nil, 0
+    end
+    local removed = 0
+    -- Temporary files are left alone, as one may belong to a write in progress in another instance.
+    for _, name in ipairs(scan(self.dir, false)) do
+        if os.remove(self:file_path(name)) then
+            removed = removed + 1
+        end
+    end
+    self.order, self.indexed, self.keys, self.values = {}, {}, {}, {}
+    return self.dir, removed
+end
+
 ---Return the number of indexed entries, whether loaded or not.
 ---@return integer
 function Cache:count()
