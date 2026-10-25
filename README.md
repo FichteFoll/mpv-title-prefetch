@@ -237,7 +237,8 @@ By default, the script only prints warnings and errors:
 - a probe or yt-dlp executable that cannot be started
   (mpv itself also prints `Subprocess failed: init` for each attempt),
 - a subprocess that hits the `timeout`,
-  listing every entry of the aborted process,
+  listing every entry of the aborted process
+  and prefixed with the subprocess id, explained below,
 - an invalid `resolve-range` argument.
 
 `clear-cache` is the one exception:
@@ -250,10 +251,16 @@ are not shown by default.
 
 `--msg-level=title_prefetch=v` adds one line per resolved entry,
 with the title or the reason it failed,
+one line per subprocess with its duration,
 and the cache directory in use.
+Every line the script logs about a subprocess
+(its start at `debug`, its timeout warning, its duration and the outcome lines)
+starts with an id like `[#7]`,
+which is shared by the entries of one yt-dlp batch.
 At this level, mpv itself also logs the command line of every subprocess
 under the script's prefix,
 and `Subprocess failed: killed` for one that hits the `timeout`.
+These lines of mpv itself carry no id.
 
 `--msg-level=title_prefetch=debug` adds the scheduling details:
 `resolve-range` requests,

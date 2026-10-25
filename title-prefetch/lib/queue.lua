@@ -49,6 +49,7 @@ local msg = require("mp.msg")
 ---@field private pending Job[]
 ---@field private running table<string, true>
 ---@field private running_count integer
+---@field private run_count integer subprocesses started so far, the last one's run id
 local Queue = {}
 Queue.__index = Queue
 
@@ -64,6 +65,7 @@ function queue.new(args)
         pending = {},
         running = {},
         running_count = 0,
+        run_count = 0,
     }, Queue)
 end
 
@@ -86,11 +88,12 @@ local function failure_reason(result, detail)
 end
 
 ---Log the outcome of every key and return the titles, indexed like `keys`.
+---@param prefix string prepended to every line
 ---@param keys string[]
 ---@param outcome RunOutcome
 ---@param result SubprocessResult
 ---@return table<integer, string> titles
-local function log_outcomes(keys, outcome, result)
+local function log_outcomes(prefix, keys, outcome, result)
     ---@type table<integer, string>
     local titles = {}
     local outcomes = outcome.keys or {}
@@ -98,11 +101,12 @@ local function log_outcomes(keys, outcome, result)
         local key_outcome = outcomes[key]
         if key_outcome and key_outcome.title then
             titles[i] = key_outcome.title
-            msg.verbose("resolved " .. key .. ": " .. key_outcome.title)
+            msg.verbose(prefix .. "resolved " .. key .. ": " .. key_outcome.title)
         elseif key_outcome and not key_outcome.detail then
-            msg.verbose("no title for " .. key)
+            msg.verbose(prefix .. "no title for " .. key)
         else
-            msg.verbose("failed " .. key .. ": " .. failure_reason(result, key_outcome and key_outcome.detail))
+            local reason = failure_reason(result, key_outcome and key_outcome.detail)
+            msg.verbose(prefix .. "failed " .. key .. ": " .. reason)
         end
     end
     return titles
@@ -119,14 +123,17 @@ function Queue:start(jobs)
     end
 
     self.running_count = self.running_count + 1
+    self.run_count = self.run_count + 1
+    local prefix = "[#" .. self.run_count .. "] "
     for _, key in ipairs(keys) do
         self.running[key] = true
-        msg.debug("starting " .. key .. " (" .. self.running_count .. "/" .. self.concurrency .. ")")
+        msg.debug(prefix .. "starting " .. key .. " (" .. self.running_count .. "/" .. self.concurrency .. ")")
     end
 
     local timeout = self.timeout
     ---@type MpTimer?
     local timer
+    local started = mp.get_time()
     local request = mp.command_native_async({
         name = "subprocess",
         args = runner.args(keys),
@@ -142,19 +149,20 @@ function Queue:start(jobs)
             self.running[key] = nil
         end
         self.running_count = self.running_count - 1
+        msg.verbose(string.format("%sfinished after %.2f s", prefix, mp.get_time() - started))
 
         ---@type table<integer, string>
         local titles = {}
         local retry = false
         if not success or not result then
             for _, key in ipairs(keys) do
-                msg.verbose("failed " .. key .. ": " .. tostring(err))
+                msg.verbose(prefix .. "failed " .. key .. ": " .. tostring(err))
             end
         else
             local outcome = runner.parse(keys, result.stdout or "", result)
             retry = outcome.retry == true
             if not retry then
-                titles = log_outcomes(keys, outcome, result)
+                titles = log_outcomes(prefix, keys, outcome, result)
             end
         end
 
@@ -165,7 +173,7 @@ function Queue:start(jobs)
     end)
     if request then
         timer = mp.add_timeout(timeout, function()
-            msg.warn("timed out after " .. tostring(timeout) .. " s: " .. table.concat(keys, ", "))
+            msg.warn(prefix .. "timed out after " .. tostring(timeout) .. " s: " .. table.concat(keys, ", "))
             mp.abort_async_command(request)
         end)
     end
